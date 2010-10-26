@@ -2,21 +2,22 @@
  * addlabel2.c
  *
  *  Created on: 2010-10-22
+ *  All rights reserved.
  *      Author: zsc
  *
- *      I wrote this file to insert labels into an ELF binary.
+ *      This program inserts labels into an ELF binary.
  *
  *      When OProfile records an event, it does so by recording the event under a specific
- *      label. However, binary produced by GCC only preserve label for functions, and not for
+ *      label. However, binary produced by GCC only preserves labels for functions, and not for
  *      basic blocks (it does have labels for basic blocks when in object file, starting with
  *      a dot, but it seems these labels are forgotten when linked). This program will iterate
  *      the text segment to record all branches and jumps, then add a symbol for them in symtab,
- *      and a name for them in strtab, then modify the ELF. The names are readily seen when
+ *      and a name for them in strtab, then modify the ELF. The names can be seen when doing
  *      objdump.
  *
  *      TODO:
  *      1. produced better names
- *      2. find out if program header need be modified.
+ *      2. find out if program headers need be modified.
  *      3. jump targets should be made a separate basic block
  *
  *      A mistake in Linker and Loaders etc.: section header table need not come after
@@ -406,11 +407,10 @@ err:
 }
 
 int main(int argc, char *argv[]) {
-	const char *fname = argv[1];
-	//const char *section = argv[2];
-	//int extra = atoi(argv[3]);
-
-	//enlarge_section_file(fname, "out", section, extra);
-	label_file (fname, argv[2]);
+	if (argc!=3) {
+		printf ("Usage: %s old-file new-file\n", argv[0]);
+		exit (-1);
+	}
+	label_file (argv[1], argv[2]);
 	return 0;
 }
