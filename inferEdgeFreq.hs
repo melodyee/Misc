@@ -65,7 +65,9 @@ test :: [Equation String Float]
 test = [(10,["AB","CB"]),(10,["AB","AC"]),(7,["AC"])]
 
 main = do
-        infos <- parseAnnotAss "/home/zsc/prof_339/gzip.s"
+        infos <- parseAnnotAss "/home/zsc/prof_339/gap.s"
+        -- /home/zsc/prof_339/gap/gap.ipakeep/5.s"
+        -- /home/zsc/prof_339/gzip.s
         let g = graphFromBbinfos infos
         putStrLn $ show $ g
         putStrLn $ show $ solve $ collect g
