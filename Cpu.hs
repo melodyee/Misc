@@ -1,4 +1,4 @@
-
+-- ghc --make Cpu.hs -main-is Cpu
 module Cpu where
 import Data.Word
 import Data.Bits
@@ -8,6 +8,7 @@ import Data.Maybe (fromJust)
 import qualified Data.Map as M
 import Control.Monad
 import Control.Monad.State
+import Text.Printf (printf)
 type Reg = Word16
 type Imm = Word16
 data Op = Add | Sub | And | Or | Not | Sl | Sr | Sru deriving (Eq,Show,Read,Enum) 
@@ -21,9 +22,33 @@ data Instr =
         | B Cond Reg Imm
         deriving (Eq,Show,Read)
 
+toInt :: [Int] -> Int
+toInt = fromIntegral.foldl (\a b -> 2*a+b) 0
+
+decode :: Word16 -> Maybe Instr
+decode w = case take 1 l of
+                [0] -> if special/=0 
+                        then Nothing 
+                        else Just (Arith (toEnum (op-1)) rd rs1 rs2)
+                _ -> case take 4 l of
+                        [1,0,0,0] -> Just (Arith Sru rd rs1 rs2)
+                        [1,0,0,1] -> Just (Addi rd rs1 imm)
+                        [1,0,1,0] -> Just (Ld rd rs1 imm)
+                        [1,0,1,1] -> Just (St rd rs1 imm)
+                        [1,1,0,0] -> Just (B (toEnum cond) rs1 imm)
+                        _ -> Nothing
+        where l = toList w
+              special =toInt$drop 13 l
+              op = toInt$take 4 l
+              cond = toInt$take 3$drop 4 l
+              rs1 = fromIntegral.toInt$take 3$drop 7 l
+              rs2 = fromIntegral.toInt$take 3$drop 10 l
+              imm = fromIntegral.toInt$drop 10 l
+              rd = fromIntegral.toInt$take 3$drop 4 l
+
 encode :: Instr -> Word16
 encode (Arith op rd rs1 rs2) =
-        fromIntegral (fromEnum op) `shiftL` 12 .|.
+        fromIntegral (1+fromEnum op) `shiftL` 12 .|.
         rd `shiftL` 9 .|. rs1 `shiftL` 6 .|. rs2 `shiftL` 3
 encode (Addi rd rs1 imm) =
         9 `shiftL` 12 .|.
@@ -42,8 +67,9 @@ toList :: Word16 -> [Int]
 toList instr = map fromEnum$ BS.toList . BS.bitString . B.pack $ 
         map fromIntegral [instr `shiftR` 8,instr .&. 255]
 
-dumpRom :: [Instr] -> String
-dumpRom = unlines.map (unwords.map (foldl1 (++).map show).sep.toList.encode)
+dumpRom :: [Instr] -> [String]
+dumpRom = map (foldl1 (++).map show.toList.encode)
+--unlines.map (unwords.map (foldl1 (++).map show).sep.toList.encode)
         where sep l = [b,a] -- little endian
                 where (a,b) = splitAt 8 l
 
@@ -141,10 +167,8 @@ initCpu = Cpu {
         pc = 0,
         offset = Nothing} 
 
-a @> b = b - a - 1
-
 instrs = [
-         Addi 1 0 37
+         Addi 1 0 13
         ,Addi 2 0 (-3)
         ,Arith And 3 0 0
         ,Arith And 4 0 0
@@ -165,9 +189,12 @@ instrs = [
         ,nop
         ] where nop = Arith Sl 0 0 0
                 (l1,l2,l3,l4,l5,l6) = (14,10,8,17,4,12)
+                a @> b = b - a - 1
 rom = M.fromList $ zip [0..] instrs  
 
 main :: IO ()       
 main = do 
-        putStrLn "@000" >> (putStrLn.dumpRom $ instrs)
-        putStrLn.show.take 100 $ evalState (sequence (repeat exec)) initCpu  
+        sequence_.map (\(n,i) -> printf "@%03x\n" (2*n :: Int) >> (putStrLn i)). 
+                zip [0..] . dumpRom $ instrs
+        --putStrLn.show.map (decode.encode) $ instrs
+        --putStrLn.show.take 100 $ evalState (sequence (repeat exec)) initCpu  
