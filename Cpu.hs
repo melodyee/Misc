@@ -36,15 +36,16 @@ encode (St rd rs1 imm) =
         rd `shiftL` 9 .|. rs1 `shiftL` 6 .|. (imm .&. 63)
 encode (B cond rs1 imm) =
         12 `shiftL` 12 .|.
-        (fromIntegral.fromEnum$ cond) `shiftL` 9 .|. rs1 `shiftL` 6 .|. imm
+        (fromIntegral.fromEnum$ cond) `shiftL` 9 .|. rs1 `shiftL` 6 .|. (imm .&. 63)
 
 toList :: Word16 -> [Int]
 toList instr = map fromEnum$ BS.toList . BS.bitString . B.pack $ 
         map fromIntegral [instr `shiftR` 8,instr .&. 255]
 
-myshow :: [Instr] -> String
-myshow = unlines.map (compact.toList.encode)
-        where compact = foldl1 (++).map show
+dumpRom :: [Instr] -> String
+dumpRom = unlines.map (unwords.map (foldl1 (++).map show).sep.toList.encode)
+        where sep l = [b,a] -- little endian
+                where (a,b) = splitAt 8 l
 
 mywrite k v = M.insert k v
 myread r m = maybe (error $ "myread "++show r) id (M.lookup r m) :: Word16
@@ -52,7 +53,8 @@ myread r m = maybe (error $ "myread "++show r) id (M.lookup r m) :: Word16
 data Cpu = Cpu {
          mem :: M.Map Word16 Word16,
          regs :: M.Map Word16 Word16,
-         pc :: Word16
+         pc :: Word16,
+         offset :: Maybe Word16 -- used when in delay slot
         } deriving (Eq,Show,Read)
         
 readReg :: Word16 -> State Cpu Word16
@@ -73,10 +75,6 @@ writeMem r v = do
         cpu <- get
         put cpu {mem = mywrite r v (mem cpu)}
 
-incPc inc = do
-        cpu <- get
-        put cpu {pc = pc cpu +inc }
-
 interpretOps :: Op -> Word16 -> Word16 -> Word16
 interpretOps op = maybe (error (show op)) id (lookup op [
         (Add,(+)),(Sub,(-)),
@@ -90,31 +88,44 @@ interpretCond cond = case cond of
         Gt -> not.lez
         Le -> lez
         where lez x = ((x .&. 32768) == 32768) || x==0 
-delta = 1
+
+moveOn :: State Cpu ()
+moveOn = do
+        cpu <- get
+        case offset cpu of
+                Nothing -> put cpu {pc = pc cpu + delta} 
+                Just off -> put cpu {offset = Nothing, pc = pc cpu + off}
+        where delta = 1
+
 interpret :: Instr -> State Cpu ()
 interpret (Arith op rd rs1 rs2) = do
        r1 <- readReg rs1
        r2 <- readReg rs2
        writeReg rd ((interpretOps op) r1 r2)
-       incPc delta
+       moveOn
 interpret (Addi rd rs1 imm) = do
         r1 <- readReg rs1
         writeReg rd (r1 + imm)
-        incPc delta
+        moveOn
 interpret (Ld rd rs1 imm) = do
         r1 <- readReg rs1
         v <- readMem (fromIntegral (r1 + imm))
         writeReg rd v
-        incPc delta
+        moveOn
 interpret (St rd rs1 imm) = do
         r1 <- readReg rs1
         v <- readReg rd
         writeMem (fromIntegral (r1 + imm)) v
-        incPc delta
+        moveOn
         
 interpret (B cond rs1 imm) = do
         r1 <- readReg rs1
-        incPc (if (interpretCond cond) r1 then imm else delta)
+        moveOn
+        if interpretCond cond r1 
+                then do
+                        cpu <- get
+                        put cpu {offset = Just imm}
+                else moveOn
        
 exec :: State Cpu Cpu 
 exec = do
@@ -127,9 +138,10 @@ exec = do
 initCpu = Cpu {
         mem = M.empty,
         regs = M.empty,
-        pc = 0} 
+        pc = 0,
+        offset = Nothing} 
 
-a @> b = b - a
+a @> b = b - a - 1
 
 instrs = [
          Addi 1 0 37
@@ -156,4 +168,6 @@ instrs = [
 rom = M.fromList $ zip [0..] instrs  
 
 main :: IO ()       
-main = putStrLn.show.take 100 $ evalState (sequence (repeat exec)) initCpu  
+main = do 
+        putStrLn "@000" >> (putStrLn.dumpRom $ instrs)
+        putStrLn.show.take 100 $ evalState (sequence (repeat exec)) initCpu  
