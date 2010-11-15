@@ -146,9 +146,9 @@ interpret (St rd rs1 imm) = do
         
 interpret (B cond rs1 imm) = do
         r1 <- readReg rs1
-        moveOn
         if interpretCond cond r1 
                 then do
+                        moveOn
                         cpu <- get
                         put cpu {offset = Just imm}
                 else moveOn
