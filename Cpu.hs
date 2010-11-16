@@ -196,5 +196,5 @@ main :: IO ()
 main = do 
         sequence_.map (\(n,i) -> printf "@%03x\n" (2*n :: Int) >> (putStrLn i)). 
                 zip [0..] . dumpRom $ instrs
-        --putStrLn.show.map (decode.encode) $ instrs
+        putStrLn.show.map (decode.encode) $ instrs
         --putStrLn.show.take 100 $ evalState (sequence (repeat exec)) initCpu  
