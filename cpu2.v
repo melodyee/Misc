@@ -308,7 +308,7 @@ module mem_module(clock, reset, exbus, membus, mem_dest);
 	ram ram1(.clock(clock), .raddr(addr), .rout(membus_memresult), 
 		.wen(op==4'b1011), .waddr(addr), .win(stvalue));
 	
-	assign addr = exresult[11:0];
+	assign addr = {exresult[10:0],1'b0};
 	assign membus_valid = valid;
 	assign membus_op = op;
 	assign membus_dest = dest;
