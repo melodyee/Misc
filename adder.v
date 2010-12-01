@@ -1,12 +1,16 @@
 module system;
 	reg [15:0] x;
 	reg [15:0] y;
+	reg [63:0] x2;
+	reg [63:0] y2;
 	reg clock;
 	wire [15:0] z;
 	wire [15:0] z2;
+	wire [63:0] z3;
 	wire cout;
 	adder16 ad(.x(x),.y(y),.z(z),.c0(1'b0),.cout(cout));
 	booth8 bo(.x(x[7:0]),.y(y[7:0]),.z(z2),.cout());  
+	adder64 ad64(.x(x2),.y(y2),.z(z3),.c0(1'b0),.cout());
 	initial #1000 $finish ;
 	initial clock <= 1'b0;
 	always #1 clock <= ~clock;
@@ -16,9 +20,12 @@ module system;
 		//y <= 16'b1;
 		x <= 16'b1011;
 		y <= 16'b1011;
+		x2 <= 64'b1111111111111111111111111111111111111111111111111111111111111111;
+		y2 <= 64'b1;
 	end
 	always @(posedge clock) begin
 		y <= y + 3;
+		y2 <= y2 + 3;
 	end
     initial begin
     	$dumpfile ("testbed.vcd");
@@ -44,6 +51,49 @@ module carry4(p,g,c0,c,c4,P,G);
 		| p[3]&p[2]&p[1]&g[0] | p[3]&p[2]&p[1]&p[0]&c0;
 	assign P = p[0]*p[1]*p[2]*p[3];
 	assign G = g[3] | p[3]&g[2] | p[3]&p[2]&g[1] | p[3]&p[2]&p[1]&g[0]; 
+endmodule
+
+module carry16(p,g,c0,c,c16,P,G);
+	input [15:0] p;
+	input [15:0] g;
+	input c0;
+	output [15:0] c;
+	output c16;
+	wire [3:0] bc;
+	wire [3:0] P2;
+	wire [3:0] G2;
+	output P;
+	output G;
+
+	carry4 ca1(.p(p[3:0]),.g(g[3:0]),.c0(c0),.c(c[3:0]),.P(P2[0]),.G(G2[0]),.c4());
+	carry4 ca2(.p(p[7:4]),.g(g[7:4]),.c0(bc[1]),.c(c[7:4]),.P(P2[1]),.G(G2[1]),.c4());
+	carry4 ca3(.p(p[11:8]),.g(g[11:8]),.c0(bc[2]),.c(c[11:8]),.P(P2[2]),.G(G2[2]),.c4());
+	carry4 ca4(.p(p[15:12]),.g(g[15:12]),.c0(bc[3]),.c(c[15:12]),.P(P2[3]),.G(G2[3]),.c4(c16));
+	
+	carry4 ca5(.p(P2),.g(G2),.c0(c0),.c(bc),.P(P),.G(G),.c4());
+endmodule
+
+module adder64(x,y,z,c0,cout);
+	input [63:0] x;
+	input [63:0] y;
+	input c0;
+	output [63:0] z;
+	output cout;
+	wire [63:0] p;
+	wire [63:0] g;
+	wire [63:0] c;
+	wire [3:0] bc;
+	wire [3:0] P;
+	wire [3:0] G;
+	assign p = x|y;
+	assign g = x&y;
+	assign z = x^y^c;
+	carry16 ca1(.p(p[15:0]),.g(g[15:0]),.c0(c0),.c(c[15:0]),.P(P[0]),.G(G[0]),.c16());
+	carry16 ca2(.p(p[31:16]),.g(g[31:16]),.c0(bc[1]),.c(c[31:16]),.P(P[1]),.G(G[1]),.c16());
+	carry16 ca3(.p(p[47:32]),.g(g[47:32]),.c0(bc[2]),.c(c[47:32]),.P(P[2]),.G(G[2]),.c16());
+	carry16 ca4(.p(p[63:48]),.g(g[63:48]),.c0(bc[3]),.c(c[63:48]),.P(P[3]),.G(G[3]),.c16(cout));
+	
+	carry4 ca5(.p(P),.g(G),.c0(c0),.c(bc),.P(),.G(),.c4());
 endmodule
 
 module adder16(x,y,z,c0,cout);
