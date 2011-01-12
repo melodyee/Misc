@@ -5,6 +5,8 @@
 		3) gcc hi.c -I /where/ever -L /who/knows/where -l X11
 
 	Brian Hammond 2/9/96.    Feel free to do with this as you will!
+
+	Made a colorful ray tacer by Zhou Shuchang, with code borrowed from Jon Harrop (a ray caster). 1/12/2011
 */
 
 
