@@ -1,0 +1,1011 @@
+diff --git a/arch/mips/kernel/scall32-o32.S b/arch/mips/kernel/scall32-o32.S
+index 759f680..0a63be7 100644
+--- a/arch/mips/kernel/scall32-o32.S
++++ b/arch/mips/kernel/scall32-o32.S
+@@ -653,6 +653,10 @@ einval:	li	v0, -ENOSYS
+ 	sys	sys_dup3		3
+ 	sys	sys_pipe2		2
+ 	sys	sys_inotify_init1	1
++	sys	sys_enable_path_profile	2 /* 4330 */
++	sys	sys_register_color_process	0
++	sys	sys_set_trap_table 2
++	sys	sys_add_trap_pair 2
+ 	.endm
+ 
+ 	/* We pre-compute the number of _instruction_ bytes needed to
+diff --git a/arch/mips/kernel/scall64-o32.S b/arch/mips/kernel/scall64-o32.S
+index c77dc4c..8ae3092 100644
+--- a/arch/mips/kernel/scall64-o32.S
++++ b/arch/mips/kernel/scall64-o32.S
+@@ -535,6 +535,10 @@ sys_call_table:
+ 	PTR	sys_dup3
+ 	PTR	sys_pipe2
+ 	PTR	sys_inotify_init1
++	PTR	sys_enable_path_profile /* 4330 */
++	PTR	sys_register_color_process
++	PTR	sys_set_trap_table
++	PTR	sys_add_trap_pair
+ //cgp
+ //	PTR	sys_scache_lock
+ //	PTR	sys_scache_unlock
+diff --git a/arch/mips/kernel/traps.c b/arch/mips/kernel/traps.c
+index a61471d..073e191 100644
+--- a/arch/mips/kernel/traps.c
++++ b/arch/mips/kernel/traps.c
+@@ -45,6 +45,7 @@
+ #include <asm/mmu_context.h>
+ #include <asm/types.h>
+ #include <asm/stacktrace.h>
++#include <asm/cacheops.h>
+ 
+ extern void prom_printf(char * fmt, ...);
+ extern void check_wait(void);
+@@ -753,9 +754,38 @@ out_sigsegv:
+ 	force_sig(SIGSEGV, current);
+ }
+ 
++#define STAT
++#define DYNAMIC_REVOKE STAT
++typedef u_int32_t address;
++typedef struct _list {
++	struct _list *next;
++	union {
++		struct {
++			address key;
++			address data;
++#ifdef STAT
++			long long count;
++#endif
++		} pair;
++		u_int64_t u64;
++	} u;
++} list;
++extern struct _list* htable_find (struct _htable* h, unsigned int key);
++extern unsigned int trap_to_branch (unsigned int instruction, int offset);
++extern int path_length_limit;
++extern void start_counting (void);
++extern void stop_counting (void);
++extern struct _htable* append_htrie (struct _htable* ht, unsigned int* array, unsigned int len);
++
+ asmlinkage void do_tr(struct pt_regs *regs)
+ {
+ 	unsigned int opcode, tcode = 0;
++	struct _list* p;
++	unsigned long new_epc;
++	static int current_depth;
++#define LAST_SEEN_BB_LIMIT 10
++	unsigned int last_seen_traps[LAST_SEEN_BB_LIMIT];
++	static int last_seen_traps_offset;
+ 
+ 	if (__get_user(opcode, (unsigned int __user *) exception_epc(regs)))
+ 		goto out_sigsegv;
+@@ -764,6 +794,95 @@ asmlinkage void do_tr(struct pt_regs *regs)
+ 	if (!(opcode & OPCODE))
+ 		tcode = ((opcode >> 6) & ((1 << 10) - 1));
+ 
++	if (current->trap_bb_table) {
++		if (tcode==513) 
++		{
++//			printk(KERN_DEBUG"[do_tr] saw %p\n", addr);
++			last_seen_traps[last_seen_traps_offset] = regs->cp0_epc;
++			last_seen_traps_offset++;
++			if (last_seen_traps_offset>= LAST_SEEN_BB_LIMIT) {
++				printk(KERN_DEBUG"[do_tr] last_seen_bb_offset overflowed\n");
++			}
++
++			if (current_depth==0 && path_length_limit>1)
++				stop_counting();
++			current_depth++;
++			if (current_depth>=path_length_limit) {
++				if (path_length_limit>1)
++					start_counting();
++				current_depth = 0;
++				append_htrie(current->path_htrie, last_seen_traps, last_seen_traps_offset);
++				last_seen_traps_offset = 0;
++			}
++		}
++	}
++
++	if (current->trap_table || tcode)  {
++		if (tcode) {
++			current->count_tcode_jump++;
++			new_epc = regs->cp0_epc + 4*((int)tcode-512);
++/*			printk(KERN_DEBUG"opcode = %u, tcode = %u, 4*(tcode-512) = %d, do_tr 0x%lx -> 0x%lx\n", 
+++				opcode, tcode, 4*((int)tcode-512), regs->cp0_epc, new_epc); */
++			regs->cp0_epc = new_epc;
++			return;
++		} else {
++			current->count_htable_query++;
++			p = htable_find(current->trap_table, regs->cp0_epc);
++			if (p) {
++#ifdef STAT
++				p->u.pair.count++;
++#endif
++				new_epc = p->u.pair.data;
++#ifdef DYNAMIC_REVOKE
++#define THRESHOLD 0x20000
++				if((p->u.pair.count & (THRESHOLD-1)) == (THRESHOLD-1)) {
++					unsigned int new_instruction = trap_to_branch(opcode, new_epc - regs->cp0_epc);
++					if (new_instruction) {
++						unsigned int __user * addr = (unsigned int __user *) regs->cp0_epc;
++#ifdef THROUGH_KSEG0
++						unsigned int* kseg0_addr;
++#endif
++						unsigned int current_opcode;
++						printk(KERN_DEBUG"[do_tr]change 0x%lx: 0x%x -> 0x%x\n", 
++							regs->cp0_epc, opcode, new_instruction);
++#ifdef THROUGH_KSEG0
++						kseg0_addr = (unsigned int*) CKSEG0ADDR (virt_to_phys(addr));
++						*kseg0_addr = new_instruction;
++#else
++						if (__put_user(new_instruction, addr))
++							printk(KERN_DEBUG"[do_tr] __put_user to %p failed\n", addr) ;
++#endif
++						if (__get_user(current_opcode, addr))
++							goto out_sigsegv;
++						if(current_opcode != new_instruction)
++							printk(KERN_DEBUG"[do_tr] __put_user to %p failed as 0x%x != 0x%x \n", 
++								addr, current_opcode, new_instruction) ;
++						/* hit writeback invalidate the D-cache */
++						__asm__ volatile (
++							"	.set noreorder					\t\n"	
++							"	.set mips3					\t\n"	
++							"	cache %1, 0x000(%0)			\t\n"	
++							"	.set reorder					\t\n"	
++									:							
++									: "r" (addr),"i" (Hit_Writeback_Inv_D));
++						/* hit invalidate the I-cache */
++						__asm__ volatile (
++							"	.set noreorder					\t\n"	
++							"	.set mips3					\t\n"	
++							"	cache %1, 0x000(%0)			\t\n"	
++							"	.set reorder					\t\n"	
++									:							
++									: "r" (addr),"i" (Hit_Invalidate_I));
++					}
++				}
++#endif
++				//printk(KERN_DEBUG"do_tr 0x%lx -> 0x%lx\n", regs->cp0_epc, new_epc);
++				regs->cp0_epc = new_epc;
++				return;
++			}
++		}
++	}
++
+ 	do_trap_or_bp(regs, tcode, "Trap");
+ 	return;
+ 
+@@ -1557,8 +1676,8 @@ void __init set_handler(unsigned long offset, void *addr, unsigned long size)
+ 	local_flush_icache_range(ebase + offset, ebase + offset + size);
+ }
+ 
+-static char panic_null_cerr[] __cpuinitdata =
+-	"Trying to set NULL cache error exception handler";
++//static char panic_null_cerr[] __cpuinitdata =
++//	"Trying to set NULL cache error exception handler";
+ 
+ /* Install uncached CPU exception handler */
+ void __cpuinit set_uncached_handler(unsigned long offset, void *addr,
+@@ -1572,7 +1691,8 @@ void __cpuinit set_uncached_handler(unsigned long offset, void *addr,
+ #endif
+ 
+ 	if (!addr)
+-		panic(panic_null_cerr);
++		panic("Trying to set NULL cache error exception handler");
++//		panic(panic_null_cerr);
+ 
+ 	memcpy((void *)(uncached_ebase + offset), addr, size);
+ }
+diff --git a/fs/binfmt_elf.c b/fs/binfmt_elf.c
+index df53251..8908807 100644
+--- a/fs/binfmt_elf.c
++++ b/fs/binfmt_elf.c
+@@ -558,6 +558,9 @@ static unsigned long randomize_stack_top(unsigned long stack_top)
+ #endif
+ }
+ 
++extern struct _htable* htable_of_array(u_int32_t* arr, int len);
++extern struct _htable* htable_create(void);
++#define BRAP
+ static int load_elf_binary(struct linux_binprm *bprm, struct pt_regs *regs)
+ {
+ 	struct file *interpreter = NULL; /* to shut gcc up */
+@@ -580,6 +583,12 @@ static int load_elf_binary(struct linux_binprm *bprm, struct pt_regs *regs)
+ 		struct elfhdr elf_ex;
+ 		struct elfhdr interp_elf_ex;
+ 	} *loc;
++	char *shstrtab_buffer;
++	elfshdr _shstrtab;
++	elfshdr *shstrtab = &_shstrtab;
++	elfshdr _shdr;
++	elfshdr *shdr = &_shdr;
++	int32_t* address_array;
+ 
+ 	loc = kmalloc(sizeof(*loc), GFP_KERNEL);
+ 	if (!loc) {
+@@ -621,6 +630,69 @@ static int load_elf_binary(struct linux_binprm *bprm, struct pt_regs *regs)
+ 			retval = -EIO;
+ 		goto out_free_ph;
+ 	}
++	if (kernel_read(bprm->file,
++			loc->elf_ex.e_shoff + loc->elf_ex.e_shstrndx * sizeof(elfshdr),
++			(char *) shstrtab, sizeof(elfshdr)) != sizeof(elfshdr))
++		goto out_free_ph;
++	
++	shstrtab_buffer = kmalloc(1024, GFP_KERNEL);
++	if (!shstrtab_buffer)
++		goto out_free_ph;
++	
++	if (kernel_read(bprm->file, shstrtab->sh_offset, (char *) shstrtab_buffer,
++			shstrtab->sh_size) != shstrtab->sh_size) {
++		kfree(shstrtab_buffer);
++		goto out_free_ph;
++	}
++	
++	for (i = 0; i < (int) loc->elf_ex.e_shnum; i++) {
++		if (kernel_read(bprm->file, loc->elf_ex.e_shoff + i * sizeof(elfshdr),
++				(char *) shdr, sizeof(elfshdr)) != sizeof(elfshdr)) {
++			kfree(shstrtab_buffer);
++			goto out_free_ph;
++		}
++		if (strcmp(shstrtab_buffer + shdr->sh_name, ".TRAPTABLE") == 0) {
++			printk(KERN_DEBUG"[+] .TRAPTABLE Off: 0x%x size:0x%x\n",
++					(unsigned int) shdr->sh_offset, shdr->sh_size);
++			address_array = kmalloc(shdr->sh_size, GFP_KERNEL);
++			if (kernel_read(bprm->file, shdr->sh_offset, (char *) address_array,
++					shdr->sh_size) != shdr->sh_size) {
++				kfree(address_array);
++				kfree(shstrtab_buffer);
++				goto out_free_ph;
++			}
++			current->trap_table = htable_of_array(address_array, shdr->sh_size
++					/ sizeof(u_int32_t));
++			kfree(address_array);
++			break;
++		}
++	}
++
++	for (i = 0; i < (int) loc->elf_ex.e_shnum; i++) {
++		if (kernel_read(bprm->file, loc->elf_ex.e_shoff + i * sizeof(elfshdr),
++				(char *) shdr, sizeof(elfshdr)) != sizeof(elfshdr)) {
++			kfree(shstrtab_buffer);
++			goto out_free_ph;
++		}
++		if (strcmp(shstrtab_buffer + shdr->sh_name, ".trap_bb_table") == 0) {
++			printk(KERN_DEBUG"[+] .trap_bb_table Off: 0x%x size:0x%x\n",
++					(unsigned int) shdr->sh_offset, shdr->sh_size);
++			address_array = kmalloc(shdr->sh_size, GFP_KERNEL);
++			if (kernel_read(bprm->file, shdr->sh_offset, (char *) address_array,
++					shdr->sh_size) != shdr->sh_size) {
++				kfree(address_array);
++				kfree(shstrtab_buffer);
++				goto out_free_ph;
++			}
++			current->trap_bb_table = htable_of_array(address_array, shdr->sh_size
++					/ sizeof(u_int32_t));
++			current->path_htrie = htable_create ();
++			kfree(address_array);
++			break;
++		}
++	}
++	
++	kfree(shstrtab_buffer);
+ 
+ 	retval = get_unused_fd();
+ 	if (retval < 0)
+@@ -812,13 +884,17 @@ static int load_elf_binary(struct linux_binprm *bprm, struct pt_regs *regs)
+ 
+ 		if (elf_ppnt->p_flags & PF_R)
+ 			elf_prot |= PROT_READ;
++#ifndef BRAP
+ 		if (elf_ppnt->p_flags & PF_W)
++#endif
+ 			elf_prot |= PROT_WRITE;
+ 		if (elf_ppnt->p_flags & PF_X)
+ 			elf_prot |= PROT_EXEC;
+-
++#ifdef BRAP
++		elf_flags = MAP_PRIVATE | MAP_EXECUTABLE;
++#else
+ 		elf_flags = MAP_PRIVATE | MAP_DENYWRITE | MAP_EXECUTABLE;
+-
++#endif
+ 		vaddr = elf_ppnt->p_vaddr;
+ 		if (loc->elf_ex.e_type == ET_EXEC || load_addr_set) {
+ 			elf_flags |= MAP_FIXED;
+diff --git a/include/asm-mips/unistd.h b/include/asm-mips/unistd.h
+index 073680d..aa71f60 100644
+--- a/include/asm-mips/unistd.h
++++ b/include/asm-mips/unistd.h
+@@ -350,6 +350,10 @@
+ #define __NR_dup3			(__NR_Linux + 327)
+ #define __NR_pipe2			(__NR_Linux + 328)
+ #define __NR_inotify_init1		(__NR_Linux + 329)
++#define __NR_enabe_path_profile		(__NR_Linux + 330)
++#define __NR_register_color_process		(__NR_Linux + 331)
++#define __NR_set_trap_table		(__NR_Linux + 332)
++#define __NR_add_trap_pair		(__NR_Linux + 333)
+ 
+ //cgp
+ //#define __NR_scache_lock		(__NR_Linux + 330)
+@@ -357,12 +361,12 @@
+ /*
+  * Offset of the last Linux o32 flavoured syscall
+  */
+-#define __NR_Linux_syscalls		329
++#define __NR_Linux_syscalls		333
+ 
+ #endif /* _MIPS_SIM == _MIPS_SIM_ABI32 */
+ 
+ #define __NR_O32_Linux			4000
+-#define __NR_O32_Linux_syscalls		329
++#define __NR_O32_Linux_syscalls		333
+ 
+ #if _MIPS_SIM == _MIPS_SIM_ABI64
+ 
+diff --git a/include/linux/elf.h b/include/linux/elf.h
+index edc3dac..8988beb 100644
+--- a/include/linux/elf.h
++++ b/include/linux/elf.h
+@@ -380,6 +380,7 @@ typedef struct elf64_note {
+ 
+ extern Elf32_Dyn _DYNAMIC [];
+ #define elfhdr		elf32_hdr
++#define elfshdr		Elf32_Shdr
+ #define elf_phdr	elf32_phdr
+ #define elf_note	elf32_note
+ #define elf_addr_t	Elf32_Off
+@@ -388,6 +389,7 @@ extern Elf32_Dyn _DYNAMIC [];
+ 
+ extern Elf64_Dyn _DYNAMIC [];
+ #define elfhdr		elf64_hdr
++#define elfshdr		Elf64_Shdr
+ #define elf_phdr	elf64_phdr
+ #define elf_note	elf64_note
+ #define elf_addr_t	Elf64_Off
+diff --git a/include/linux/sched.h b/include/linux/sched.h
+index 6bfb849..faf1ee1 100644
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
+@@ -1303,6 +1303,12 @@ struct task_struct {
+ 	int latency_record_count;
+ 	struct latency_record latency_record[LT_SAVECOUNT];
+ #endif
++	struct _htable* trap_table;
++	long long count_htable_query;
++	long long count_tcode_jump;
++	int color;
++	struct _htable* trap_bb_table;
++	struct _htable* path_htrie;
+ };
+ 
+ /*
+diff --git a/kernel/exit.c b/kernel/exit.c
+index 85a83c8..afb2361 100644
+--- a/kernel/exit.c
++++ b/kernel/exit.c
+@@ -47,6 +47,7 @@
+ #include <linux/blkdev.h>
+ #include <linux/task_io_accounting_ops.h>
+ #include <linux/tracehook.h>
++#include <linux/file.h>
+ 
+ #include <asm/uaccess.h>
+ #include <asm/unistd.h>
+@@ -991,6 +992,14 @@ static void check_stack_usage(void)
+ static inline void check_stack_usage(void) {}
+ #endif
+ 
++extern atomic_t registered_colors;
++extern void free_htable (struct _htable* h);
++#define STAT
++#ifdef STAT
++extern void print_htable (struct _htable* h);
++#endif
++extern void print_htrie (struct _htable* ht);
++extern void free_htrie (struct _htable* ht);
+ NORET_TYPE void do_exit(long code)
+ {
+ 	struct task_struct *tsk = current;
+@@ -1091,6 +1100,28 @@ NORET_TYPE void do_exit(long code)
+ 
+ 	proc_exit_connector(tsk);
+ 	exit_notify(tsk, group_dead);
++	if (tsk->count_tcode_jump)
++		printk (KERN_DEBUG"[pid %d] count_tcode_jump = %lld\n", tsk->pid, tsk->count_tcode_jump);
++	if (tsk->trap_table) {
++		printk (KERN_DEBUG"[pid %d] count_htable_query = %lld\n", tsk->pid, tsk->count_htable_query);
++#ifdef STAT
++		print_htable(tsk->trap_table);
++#endif
++		free_htable(tsk->trap_table);
++	}
++	
++	if(tsk->trap_bb_table) {
++		free_htable(tsk->trap_bb_table);
++	}
++
++	if(tsk->path_htrie) {
++		print_htrie(tsk->path_htrie);
++		free_htrie(tsk->path_htrie);
++	}
++	
++	if (tsk->color)
++		atomic_dec(&registered_colors);
++
+ #ifdef CONFIG_NUMA
+ 	mpol_put(tsk->mempolicy);
+ 	tsk->mempolicy = NULL;
+diff --git a/kernel/extable.c b/kernel/extable.c
+index a26cb2e..8154c27 100644
+--- a/kernel/extable.c
++++ b/kernel/extable.c
+@@ -19,6 +19,7 @@
+ #include <linux/init.h>
+ #include <asm/uaccess.h>
+ #include <asm/sections.h>
++#include <asm/inst.h>
+ 
+ extern struct exception_table_entry __start___ex_table[];
+ extern struct exception_table_entry __stop___ex_table[];
+@@ -66,3 +67,393 @@ int kernel_text_address(unsigned long addr)
+ 		return 1;
+ 	return module_text_address(addr) != NULL;
+ }
++
++#define STAT
++typedef u_int32_t address;
++typedef struct _list {
++	struct _list *next;
++	union {
++		struct {
++			address key;
++			address data;
++#ifdef STAT
++			long long count;
++#endif
++		} pair;
++		u_int64_t u64;
++	} u;
++} list;
++
++bool list_is_member(address key, list* l) {
++	list *p = l;
++	while (p) {
++		if (p->u.pair.key == key) {
++			return true;
++		}
++		p = p->next;
++	}
++	return false;
++}
++
++list* list_append(list* l, u_int64_t u64) {
++	list *p;
++
++	p = kmalloc(sizeof(list), GFP_KERNEL);
++	if (!p)
++		return NULL;
++	p->next = l;
++	p->u.u64 = u64;
++	return p;
++}
++
++list* list_append_pair(list* l, address key, address data) {
++	list *p;
++
++	p = kmalloc(sizeof(list), GFP_KERNEL);
++	if (!p)
++		return NULL;
++	p->next = l;
++	p->u.pair.key = key;
++	p->u.pair.data = data;
++#ifdef STAT
++	p->u.pair.count = 1;
++#endif
++	return p;
++}
++
++list* list_find_key(list** pl, address key) {
++	static address last_key;
++	static list* last_data;
++	list* p, *pprev, *l;
++/*
++	if (key == last_key && !last_data)
++		return last_data;
++*/
++	last_key = key;
++	last_data = NULL;
++	l = *pl;
++	p = l;
++	pprev = NULL;
++	while (p) {
++		if (p->u.pair.key == key) {
++			last_data = p;
++			/* move to front */
++			if (pprev) {
++				pprev->next = p->next;
++				p->next = l;
++				*pl = p;
++			}
++			return last_data;
++		}
++		pprev = p;
++		p = p->next;
++	}
++	return last_data;
++}
++
++void free_list(list *l) {
++	list *p = l;
++	list *newp;
++	while (p) {
++		newp = p->next;
++		kfree (p);
++		p = newp;
++	}
++}
++
++void print_list(list *l) {
++#ifdef STAT
++	while(l) {
++		if (l->u.pair.count > 1000)
++			printk(KERN_DEBUG"%d:%x\n", l->u.pair.count, l->u.pair.key);
++		l = l->next;
++	}
++#else
++	if (l) {
++		while (l) {
++			printk(KERN_DEBUG"%x:%x,", l->u.pair.key, l->u.pair.data);
++			l = l->next;
++		}
++		printk(KERN_DEBUG"\n");
++	} else
++		printk(KERN_DEBUG"NULL\n");
++#endif
++}
++
++#define NUM_BUCKETS_BITS 9
++#define NUM_BUCKETS (1<<NUM_BUCKETS_BITS)
++#define NUM_BUCKETS_MASK (NUM_BUCKETS-1)
++typedef struct _htable {
++	address last_key;
++	list* last_data;
++	list* buckets[NUM_BUCKETS];
++} htable;
++
++htable* htable_insert(htable* h, address key, address data) {
++	int n;
++	list* l;
++
++	/* ignore 0 to 0 entries */
++	if (key == 0 && data == 0)
++		return h;
++	n = (key >> 2) & NUM_BUCKETS_MASK;
++	l = list_append_pair(h->buckets[n], key, data);
++	if (!l) {
++		printk(KERN_DEBUG"htable_insert faults\n");
++		return NULL;
++	}
++	h->buckets[n] = l;
++	return h;
++}
++
++htable* htable_create() {
++	int i;
++	htable* h = kmalloc(sizeof(htable), GFP_KERNEL);
++	if (!h)
++		return NULL;
++	for (i = 0; i < NUM_BUCKETS; i++) {
++		h->buckets[i] = NULL;
++	}
++	return h;
++}
++
++void free_htable(htable* h) {
++	if (h) {
++		int i;
++		for (i = 0; i < NUM_BUCKETS; i++) {
++			free_list(h->buckets[i]);
++		}
++		kfree(h);
++		printk(KERN_DEBUG"free_htable\n");
++	}
++}
++
++htable* htable_of_array(address* arr, int len) {
++	int i;
++	htable* h = htable_create();
++	if (!h)
++		return NULL;
++	for (i = 0; i < len; i += 2) {
++		if (!htable_insert(h, arr[i], arr[i + 1]))
++			goto free;
++	}
++	return h;
++free:
++	free_htable(h);
++	return NULL;
++}
++
++list* htable_find(htable* h, address key) {
++	if (!h) {
++		printk(KERN_DEBUG"htable_find: null htable\n");
++		return NULL;
++	}
++	if (key == h->last_key && !h->last_data)
++		return h->last_data;
++	h->last_key = key;
++	return (h->last_data = list_find_key(&h->buckets[(key >> 2) & NUM_BUCKETS_MASK],
++			key));
++}
++
++void print_htable(htable* h) {
++	int i;
++	for (i = 0; i < NUM_BUCKETS; i++) {
++		print_list(h->buckets[i]);
++	}
++	printk(KERN_DEBUG"-----\n");
++}
++#define OPCODE 0xfc000000
++unsigned int trap_to_branch (unsigned int instruction, int pre_offset) {
++	unsigned int new_op;
++	unsigned int new_instruction = 0;
++
++	/* branch count from its delay slot */
++	int offset = pre_offset -4 ;
++	if(OPCODE & instruction) {
++		/* I-type */
++	} else {
++		/* R-type */
++		unsigned int op = instruction & 0x3f;
++		switch (op) {
++			case tlt_op:
++			case tge_op:
++				if (MIPSInst_RT(instruction)==0) {
++					new_op = op==tlt_op?bltz_op:bgez_op;
++					new_instruction = (bcond_op<<I_OPCODE_SFT) |(MIPSInst_RS(instruction) <<I_RS_SFT) 
++						| (new_op<<I_RT_SFT) |((unsigned int)(offset/4) & 0xFFFF);
++				} else if (MIPSInst_RS(instruction)==0) {
++					new_op = op==tlt_op?bgtz_op:blez_op;
++					new_instruction = (new_op<<I_OPCODE_SFT) |(MIPSInst_RT(instruction) <<I_RS_SFT) 
++						| (0 <<I_RT_SFT) |((unsigned int)(offset/4) & 0xFFFF);
++				}
++				break;
++			case teq_op:
++			case tne_op:
++				new_op = op==teq_op?beq_op:bne_op;
++				new_instruction = (new_op<<I_OPCODE_SFT) |(MIPSInst_RS(instruction) <<I_RS_SFT) 
++						| (MIPSInst_RT(instruction)<<I_RT_SFT) |((unsigned int)(offset/4) & 0xFFFF);
++				break;
++		}
++	}
++	return new_instruction;
++}
++
++int path_length_limit = 0;
++void start_counting () {
++	int flags; 
++	
++	/* always enable counter, but no interrupt */
++	__asm__ volatile (
++	"	.set noreorder					\t\n"	
++	"	.set mips3					\t\n"	
++	"	ori %0, $0, %1		\t\n"
++	"	dmtc0 %0, $24 			\t\n"	
++	"	dmtc0 $0, $25 			\t\n"	
++	"	.set reorder					\t\n"	
++	:							
++	: "r" (flags), "i" (0xF));
++}
++
++void stop_counting () {
++	__asm__ volatile (
++	"	.set noreorder					\t\n"	
++	"	.set mips3					\t\n"	
++	"	dmtc0 $0, $24 			\t\n"	
++	"	dmtc0 $0, $25 			\t\n"	
++	"	.set reorder					\t\n"	
++	);
++}
++
++typedef struct _trie {
++	unsigned int data;
++	int count;
++	struct _trie *next;
++	struct _trie *child;
++} trie;
++
++trie* create_trie() {
++	trie* p = kmalloc(sizeof(trie), GFP_KERNEL);
++	if (!p)
++		return NULL;
++	p->data = 0;
++	p->count = 0;
++	p->next = NULL;
++	p->child = NULL;
++	return p;
++}
++
++void free_trie(trie* tr) {
++	if(tr->child)
++		free_trie(tr->child);
++	if(tr->next)
++		free_trie(tr->next);
++	kfree(tr);
++}
++
++trie* append_trie(trie* tr, unsigned int* array, unsigned int len) {
++	int i;
++	trie *p, *pre, *parent;
++	if (!tr) {
++		tr = create_trie();
++		if (!tr)
++			return NULL;
++	}
++	p = tr;
++	parent = NULL;
++	for(i=0;i<len;i++) {
++		pre = NULL;
++		while (p && p->data && p->data!=array[i]) {
++			pre = p;
++			p = p->next;
++		}
++		if (!p) {
++			p = create_trie();
++			if (!p)
++				return NULL;
++			if (pre)
++				pre->next = p;
++			else if (parent)
++				parent->child = p;
++		}
++		if (!p->data)
++			p->data = array[i];
++		if (i==len-1)
++			p->count ++;
++		parent = p;
++		p = p->child;
++	}
++	return tr;
++}
++
++void print_trie (int level, trie* tr) {
++	int i;
++	if (tr) {
++		for (i=0;i<level;i++)
++			printk(KERN_DEBUG" ");
++		printk(KERN_DEBUG"%u@%d\n", tr->data, tr->count);
++		print_trie (level+1, tr->child);
++		print_trie(level, tr->next);
++	}
++}
++
++typedef htable htrie;
++list* htrie_find(htrie* ht, address key) {
++	if (!ht) {
++		printk(KERN_DEBUG"htable_find: null htable\n");
++		return NULL;
++	}
++	return list_find_key(&ht->buckets[(key >> 2) & NUM_BUCKETS_MASK],
++			key);
++}
++
++htrie* append_htrie (htrie* ht, unsigned int* array, unsigned int len) {
++	list* p;
++	trie* tr = NULL;
++	if (!ht)
++		ht = htable_create();
++	p = htrie_find(ht, array[0]);
++	if (p)
++		tr = (trie*)p->u.pair.data;
++	tr = append_trie(tr,array,len);
++	if (!p)
++		ht = htable_insert(ht, array[0], (address)tr);
++	return ht;
++}
++
++void print_htrie_list(list *l) {
++	if (l) {
++		while (l) {
++			print_trie(0, (trie*)l->u.pair.data);
++			l = l->next;
++		}
++	}
++}
++
++void print_htrie (htrie* ht) {
++	int i;
++	for (i = 0; i < NUM_BUCKETS; i++) {
++		print_htrie_list(ht->buckets[i]);
++	}
++	//printk(KERN_DEBUG"-----\n");
++}
++
++void free_htrie_list(list *l) {
++	if (l) {
++		while (l) {
++			free_trie((trie*)l->u.pair.data);
++			l = l->next;
++		}
++	}
++}
++
++void free_htrie (htrie* ht) {
++	if (ht) {
++		int i;
++		for (i = 0; i < NUM_BUCKETS; i++) {
++			free_htrie_list(ht->buckets[i]);
++		}
++		kfree(ht);
++		printk(KERN_DEBUG"free_htrie\n");
++	}
++}
++
+diff --git a/kernel/timer.c b/kernel/timer.c
+index 67eed3d..4e7393e 100644
+--- a/kernel/timer.c
++++ b/kernel/timer.c
+@@ -1146,6 +1146,66 @@ asmlinkage long sys_getegid(void)
+ 	return  current->egid;
+ }
+ 
++extern int path_length_limit;
++extern void start_counting ();
++typedef u_int32_t address;
++extern struct _htable* htable_of_array (unsigned int* arr, int len);
++extern struct _htable* htable_insert(struct _htable* h, address key, address data);
++asmlinkage long sys_add_trap_pair(address source, address target)
++{
++	current->trap_table = htable_insert(current->trap_table, source, target); 
++	return 0;
++}
++asmlinkage long sys_set_trap_table(unsigned int* traptable, unsigned long length)
++{
++	unsigned int* table;
++	struct _htable *htable;
++	long retval = -ENOMEM;
++
++	printk(KERN_DEBUG"sizeof (unsigned int) = %d\n", sizeof(unsigned int));
++	printk(KERN_DEBUG"traptable@length = 0x%x@%d\n", traptable, length);
++
++	table = kmalloc(sizeof(unsigned int) * length, GFP_KERNEL);
++	if (!table)
++		goto out;
++	if (copy_from_user(table, traptable, length*sizeof(unsigned int))) {
++		retval = -EFAULT;
++		goto free;
++	}
++	htable = htable_of_array (table, length);
++	if (!htable) {
++		retval = -EFAULT;
++		goto free;
++	}
++	current->trap_table = htable; 
++	retval = 0;
++free:
++	kfree(table);
++out:
++	return retval;
++}
++asmlinkage long sys_enable_path_profile(int length, int granuilarity)
++{
++	path_length_limit = length;
++	printk(KERN_DEBUG"path profiling enabled with length %d and granuilarity %d\n", length, granuilarity);
++	start_counting();
++	return 0;
++}
++
++#define MAX_NR_COLOR 4
++atomic_t registered_colors = ATOMIC_INIT(0);
++asmlinkage long  sys_register_color_process()
++{
++	atomic_inc(&registered_colors);
++	if (atomic_read(&registered_colors) > MAX_NR_COLOR) {
++		printk(KERN_DEBUG"already %d colored registered\n", atomic_read(&registered_colors));
++		return -EFAULT;
++	}
++	current->color = atomic_read(&registered_colors);
++	printk(KERN_DEBUG"process %d registered as color %d\n", current->pid, current->color);
++	return 0;
++}
++
+ #endif
+ 
+ static void process_timeout(unsigned long __data)
+diff --git a/mm/page_alloc.c b/mm/page_alloc.c
+index ed5cdae..21f51ed 100644
+--- a/mm/page_alloc.c
++++ b/mm/page_alloc.c
+@@ -1045,6 +1045,43 @@ void split_page(struct page *page, unsigned int order)
+ 		set_page_refcounted(page + i);
+ }
+ 
++#define MAX_NR_COLOR 4
++#define LOG_MAX_NR_COLOR 2
++#define MAX_NR_COLOR_RETRIES 100
++typedef int32_t address;
++typedef struct _list {
++	struct _list *next;
++	union {
++		struct {
++			address key;
++			address data;
++		} pair;
++		u_int64_t i64;
++	} u;
++} list;
++static struct _list* colored_caches[MAX_NR_COLOR] = {NULL,};
++spinlock_t colored_caches_lock;
++extern struct _list* list_append (struct _list* l, u_int64_t );
++static int put_to_colored_caches (struct page * page, int color) {
++	colored_caches[color-1] = list_append(colored_caches[color-1], (u_int64_t)page);
++	return 0;
++}
++
++static struct page* get_from_colored_caches(int color) {
++	struct _list* p;
++	struct page* page;
++	p = colored_caches[color-1];
++	if (!p) {
++		/*printk(KERN_DEBUG"empty colored cache for color %d\n", color);*/
++		return NULL;
++	}
++	page = (struct page*) (p->u.i64);
++	colored_caches[color-1] = p->next;
++	kfree(p);
++	/*printk(KERN_DEBUG"pop from cache for color %d\n", color);*/
++	return page;
++}
++
+ /*
+  * Really, prep_compound_page() should be called from __rmqueue_bulk().  But
+  * we cheat by calling it from here, in the order > 0 path.  Saves a branch
+@@ -1387,6 +1424,8 @@ get_page_from_freelist(gfp_t gfp_mask, nodemask_t *nodemask, unsigned int order,
+ 	nodemask_t *allowednodes = NULL;/* zonelist_cache approximation */
+ 	int zlc_active = 0;		/* set if using zonelist_cache */
+ 	int did_zlc_setup = 0;		/* just call zlc_setup() one time */
++	int color = current->color;
++	int i;
+ 
+ 	(void)first_zones_zonelist(zonelist, high_zoneidx, nodemask,
+ 							&preferred_zone);
+@@ -1425,6 +1464,37 @@ zonelist_scan:
+ 			}
+ 		}
+ 
++		if (color) {
++			if (order==0) {
++				/*spin_lock(& colored_caches_lock);*/
++				page = get_from_colored_caches (color);
++				/*spin_unlock(& colored_caches_lock);*/
++				if (!page) {
++					/*printk(KERN_DEBUG"get_from_colored_caches failed, allocate\n");*/
++				i=0;
++				do {
++					int pcolor;
++					page = buffered_rmqueue(preferred_zone, zone, order, gfp_mask);
++					pcolor = 1 + (page_to_pfn (page) % MAX_NR_COLOR);
++					if (pcolor == color)
++						break;
++					/*spin_lock(& colored_caches_lock);*/
++					put_to_colored_caches (page, pcolor);
++					/*spin_unlock(& colored_caches_lock);*/
++					i++;
++				} while (i<MAX_NR_COLOR_RETRIES);
++				if (i==MAX_NR_COLOR_RETRIES) {
++					printk(KERN_DEBUG"color %d fail after %d tries.\n", color, MAX_NR_COLOR_RETRIES);
++					page = buffered_rmqueue(preferred_zone, zone, order, gfp_mask);
++				}
++				}
++				if (page_to_pfn (page) % MAX_NR_COLOR != color - 1)
++					printk(KERN_DEBUG"page pfn %ld not of color %d\n", page_to_pfn (page), color);
++			} else {
++				printk(KERN_DEBUG"unable to handle color %d allocate of order %d\n", color, order);
++				page = buffered_rmqueue(preferred_zone, zone, order, gfp_mask);
++			}
++		} else
+ 		page = buffered_rmqueue(preferred_zone, zone, order, gfp_mask);
+ 		if (page)
+ 			break;
+
