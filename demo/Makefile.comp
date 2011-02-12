@@ -1,0 +1,11 @@
+cray:
+	loongCC -O3 -ipa -Wb,-WOPT:use_ld_st_offset=1 -static -loongson3 -Wb,-CG:float_use_madd -CG:use_loongson2e_multdivmod hisock.cpp
+	scp a.out root@l73:demo2/loong
+	mips64el-st-linux-gnu-g++ -O3 -march=loongson2f -mtune=loongson2f -static hisock.cpp
+	scp a.out root@l73:demo2/st
+cswim:
+	loongcc -O3 -ipa -Wb,-WOPT:use_ld_st_offset=1 -static -loongson3 -Wb,-CG:float_use_madd -CG:use_loongson2e_multdivmod -LNO:prefetch=3 -Wb,-CG:addr_ofst_opt=1 -Wb,-WOPT:use_ld_st_offset=1 -Wb,-CG:div_check_trap=0     -lm -lmv   -fno-math-errno  -O3 -ipa -IPA:linear=on:array_summary=on:array_section=on:only_inline_fusion_candidate=on:inline_for_further_fusion=on -LNO:mp1=64 -LNO:further=1 -Wb,-LNO:skip=calc2 -lm -lmv -Wb,-CG:fill_delay -Wb,-CG:fill_target -OPT:recog_madd=1-Wj,-IPA:small_pu=20 -Wb,-CG:ebo_opt_mask=-1 -Wb,-CG:opt_useless_mem_op  -Wb,-LNO:fuse_for_array_reuse=TRUE -Wb,-CG:igls_aggr=true swimsock.c -lm
+	scp a.out root@l73:tmpd/lswim
+	mips64el-st-linux-gnu-gcc -O3 -march=loongson2f -mtune=loongson2f -static swimsock.c -lm
+	scp a.out root@l73:tmpd/gswim
+
