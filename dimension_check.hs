@@ -24,6 +24,8 @@ rv2 = undefined :: Two a -> One a
 (dot tr tr) :: (a -> b) -> a -> b
 --}
 
+{-- ghci -XMultiParamTypeClasses -XFunctionalDependencies -XFlexibleInstances
+ -XUndecidableInstances --}
 data Zero
  
 data Succ a
