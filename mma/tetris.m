@@ -36,3 +36,28 @@ Framed@DynamicModule[{state={Array[0&,dim],Array[0&,dim],0},width=dim[[2]],heigh
 	"UpArrowKeyDown":>(state=evolve[state,"rotate"]),
 	"DownArrowKeyDown":>(state=Nest[evolve[#,"fall"]&,state,3])]
 	]]
+
+
+(*Tests below*)
+movings={
+	{{1,1,0},{0,0,0},{0,0,0}},
+	{{1,1,0},{0,0,0}},
+	{{1,1,1},{0,0,0}},
+	{{0,0,0},{1,1,1}},
+	Array[0&,{10,5}]
+	};
+testMoving=Function[moving,(state=evolve[{0 moving, moving,0},#];MatrixForm/@state)&/@{"left","right","fall","rotate"}];
+testMoving/@movings
+testAddNew=Function[moving,Module[{shapes},
+	shapes={{{1,1},{1,1}},{{1,1},{0,1},{0,1}},{{1,1,1},{0,1,0}},{{1,0},{1,1},{0,1}},{{0,1},{1,1},{1,0}},{{1,1,1,1}}};
+	state=addNew[{0 moving, moving,0},shapes];MatrixForm/@state]];
+testAddNew/@movings
+
+step=Function[{stateIn,action},Module[{shapes,state=stateIn},
+	shapes={{{1,1},{1,1}},{{1,1},{0,1},{0,1}},{{1,1,1},{0,1,0}},{{1,0},{1,1},{0,1}},{{0,1},{1,1},{1,0}},{{1,1,1,1}}};
+	state=addNew[state,shapes];
+	state=evolve[state,action];
+	state]];
+init=Array[0&,{10,5}];
+actions=Riffle[RandomChoice[{"left","right","rotate"(*,"fall"*)},50],"fall"];
+Thread@{{MatrixPlot[#[[1]]],MatrixPlot[#[[2]]],#[[3]]}&/@Rest@FoldList[step,{init,init,0},actions],actions}
