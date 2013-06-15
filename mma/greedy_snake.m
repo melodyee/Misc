@@ -1,0 +1,42 @@
+evolve=Function[{state,action},Module[{snake,score,stop,dim,bounties,cycle,proposal,dir,updateBounty=False},
+	{snake,score,stop,bounties,cycle}=state;dim=Dimensions@bounties;cycle+=1;
+	If[stop
+		,state
+		,Module[{newHead},
+			dir=snake[[1]]-snake[[2]];
+			dir=Switch[action
+				,"forward",dir
+				,"left",{-dir[[2]],dir[[1]]}
+				,"right",{dir[[2]],-dir[[1]]}
+			];
+			newHead=snake[[1]]+dir;
+			If[(And@@Thread[#>=1]&&And@@Thread[#<=dim]&&Not@MemberQ[snake,#])&[newHead]
+				,With[{bounty=bounties[[Sequence@@newHead]]},
+					score+=bounty;
+					snake=Prepend[snake[[;;-2+Boole[bounty=!=0]]],newHead];
+					If[bounty=!=0,updateBounty=True]];
+				,If[action==="forward",stop=True]];
+			If[Mod[cycle,20]===0,updateBounty=True];
+			If[updateBounty,bounties=Normal@SparseArray[{RandomChoice[Complement[Position[Array[1&,dim],1],snake]]->1},dim]];
+			{snake,score,stop,bounties,cycle}
+		]]]];
+show=Function[{snake,dim},Module[{m=Normal@SparseArray[#->1&/@snake,dim]},m[[Sequence@@(snake[[1]])]]+=1;m]];
+showState=Function[{state,dim},Graphics[MatrixPlot[show[state[[1]],dim]-state[[4]]][[1]],PlotLabel->state[[{2,3,5}]]]];
+
+(*dim={10,10};init={Floor[dim[[1]]/2],#}&/@Range@@Floor[dim[[2]]{1/3,2/3}];actions=RandomChoice[{"forward","left","right"},3];
+history=FoldList[evolve,{init,0,False,Array[0&,dim],0},actions];Thread@{showState[#,dim]&/@Rest@history,actions}*)
+
+With[{dim={30,30}},
+Framed@DynamicModule[{state={{Floor[dim[[1]]/2],#}&/@Range@@Floor[dim[[2]]{1/3,2/3}],0,False,Array[0&,dim],0},width=dim[[2]],height=dim[[1]],stop=False},
+	EventHandler[
+			Dynamic[Refresh[
+				state=evolve[state,"forward"];
+				stop=state[[3]];
+				showState[state,dim]
+				,If[stop,None,UpdateInterval->0.5],TrackedSymbols:>{stop}]]
+		,PlotRange->{{0,width},{0,height}},
+	"UpArrowKeyDown":>(state=Nest[evolve[#,"forward"]&,state,3]),
+	"LeftArrowKeyDown":>(state=evolve[state,"left"]),
+	"RightArrowKeyDown":>(state=evolve[state,"right"]),
+	"DownArrowKeyDown":>(Null)
+	]]]
