@@ -26,3 +26,21 @@ Print[r=NMinimize[f[\[Theta],c],{\[Theta],c}];//AbsoluteTiming];
 	,Radon@img//ImageAdjust
 	,Magnify[#,0.5]&@Show[img,Graphics[{Thick,Orange,Line/@ImageLines@img}]]}
 ,{\[Sigma],{0,0.1,0.3,0.5}},{p,2}]
+
+(*findLineCost=Function[{xys,abcs,uvws,\[Theta],\[Lambda]},{Total@#,#}&@{
+	pnorm[MapThread[Dot,{Append[#,1]&/@xys,abcs}],1],1/(2\[Theta])pnorm2[uvws-abcs,2],pnorm[Differences@uvws,1]}];
+findLine=Function[{xys,\[Lambda],maxIter},Module[{initAbc,abcs,oldAbcs,uvws
+		,n=Length@xys,\[Theta]=1,\[Rho]=0.8},
+	(*initAbc=With[{ab=SingularValueDecomposition[*)
+LeastSquares[Append[#,1]&/@xys,Array[1&,Length@xys]]-{0,0,1}(*RandomReal[1,3]*);
+	Print[initAbc];
+	uvws=abcs=Array[initAbc&,Length@xys];oldAbcs=0 abcs;
+	Do[If[pnorm[abcs-oldAbcs,2]/n<10^-5,Print[j];Break[]
+		,oldAbcs=abcs;Print["s",findLineCost[xys,abcs,uvws,\[Theta],\[Lambda]]];
+			abcs=MapThread[Function[{uvw,xy},dShrinkageVector[\[Theta],uvw,Append[xy,1],0]],{uvws,xys}];Print["d",findLineCost[xys,abcs,uvws,\[Theta],\[Lambda]]];
+			uvws=TotalVariationFilter[abcs,\[Theta] \[Lambda]];Print["tv",findLineCost[xys,abcs,uvws,\[Theta],\[Lambda]]];
+			\[Theta]*=\[Rho];];
+	,{j,maxIter}];abcs
+	]];
+SeedRandom[1003];{a,b}=RandomReal[1,2];points=Join[RandomReal[1,{100,2}],xys={#,a #+b}&/@RandomReal[1,100]];ListPlot@points
+findLine[points,1,10]*)
