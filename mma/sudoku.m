@@ -1,5 +1,5 @@
 http://rosettacode.org/wiki/Sudoku#Mathematica
-(*It turns out this version still does not work well for strs[[2]] below*)
+(*It turns out this version is still too slow for strs[[2]] below*)
 solve[array_] := 
  NestWhile[
   Join @@ Function[newarray, 
