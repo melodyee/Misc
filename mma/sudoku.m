@@ -1,3 +1,35 @@
+(*index=(#[[1]]-1) n+#[[2]]&;
+uncertainty=Function[{assign,k},-Length@Union[Select[neighborSets@@k,s[[#[[1]],#[[2]]]]!=0&]]];
+(*MatrixForm/@{s,next,Map[uncertainty,MapIndexed[#2&,s,{2}],{2}]}*)
+step=Function[input,Module[{assign,next,prevPosS,nextPosS,toCheck},
+	{assign,next,prevPosS,nextPosS,toCheck}=input;
+(*	gassign=assign;
+	gprevPosS=prevPosS;
+	gnext=next;*)
+	(*Print[{MatrixForm@gassign,MatrixForm@gnext,gprevPosS,nextPosS,gassign[[#[[1]],#[[2]]]]&/@gprevPosS}];*)
+	(*Print@Length@nextPosS;*)
+	(*Print[Join[MatrixForm/@{assign,next},{prevPosS,nextPosS}]];*)
+		With[{k=If[toCheck===Null,First@SortBy[nextPosS,uncertainty[assign,#]&],toCheck]},
+			With[{candids=Select[Range[next[[k[[1]],k[[2]]]],n],Not@MemberQ[assign[[#[[1]],#[[2]]]]&/@(neighborSets@@k),#]&,1]},
+			If[Length@candids==0
+				,If[Length@prevPosS==0,{}
+					,{{ReplacePart[assign,k->0],ReplacePart[next,k->1],Most@prevPosS,Prepend[nextPosS,Last@prevPosS],Last@prevPosS}}]
+				,(*Print[{k,First[candids]}];*)
+				{{ReplacePart[assign,k->First@candids],ReplacePart[next,k->First@candids+1],Append[prevPosS,k],Complement[nextPosS,{k}],Null}}]]]
+	]];
+(*Block[{$RecursionLimit=10000,$IterationLimit=10000},step[s,next,{},Select[Join@@MapIndexed[#2&,s,{2}],s[[#[[1]],#[[2]]]]==0&]]];*)
+input={s,Map[If[#==0,1,10]&,s,{2}],{},Select[Join@@MapIndexed[#2&,s,{2}],s[[#[[1]],#[[2]]]]==0&],Null};
+Dynamic[input[[1]]//MatrixForm]
+(*Dynamic[{MatrixForm@gnext,gprevPosS,gassign[[#[[1]],#[[2]]]]&/@gprevPosS}]*)
+While[Length[input[[4]]]!=0,
+	r=step[input];
+	If[Length@r==0,Break[]];
+	input=r[[1]];
+	];*)
+
+
+
+
 n=9;n2=Sqrt@n;
 strs={".685...2..9.72......2983...8...32..1.14...69.6..49...8...3692......57.6..7...895."
 	,"4.....8.5.3..........7......2.....6.....8.4......1.......6.3.7.5..2.....1.4......"};
