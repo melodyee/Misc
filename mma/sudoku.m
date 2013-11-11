@@ -1,4 +1,19 @@
 http://rosettacode.org/wiki/Sudoku#Mathematica
+(*It turns out this version still does not work well for strs[[2]] below*)
+solve[array_] := 
+ NestWhile[
+  Join @@ Function[newarray, 
+      Function[{i, j}, 
+        Table[ReplacePart[newarray, 
+          Position[newarray, 0, {2}, 1][[1]] -> n], {n, 
+          Select[Range@9, 
+           FreeQ[newarray[[i]], #] && FreeQ[newarray[[All, j]], #] && 
+             FreeQ[Partition[
+                newarray, {3, 3}][[Sequence @@ 
+                 Quotient[{i, j}, 3, -2]]], #] &]}]] @@ 
+       Position[newarray, 0, {2}, 1][[1]]] /@ # &, {array}, ! 
+    FreeQ[#, 0] &]
+
 
 
 (*index=(#[[1]]-1) n+#[[2]]&;
