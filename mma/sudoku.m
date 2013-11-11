@@ -1,0 +1,23 @@
+n=9;n2=Sqrt@n;
+strs={".685...2..9.72......2983...8...32..1.14...69.6..49...8...3692......57.6..7...895."
+	,"4.....8.5.3..........7......2.....6.....8.4......1.......6.3.7.5..2.....1.4......"};
+s=ToExpression@Partition[StringSplit[StringReplace[strs[[1]],"."->"0"], ""],n];
+init=MapIndexed[If[#==0,Complement[Range[n],s[[#[[1]],#[[2]]]]&/@(Join@@(neighborSets@@#2))],{#}]&,s,{2}];init//MatrixForm
+refineWith=Function[{m,k,v},
+	With[{m2=ReplacePart[MapIndexed[If[#2[[1]]==k[[1]]||#2[[2]]==k[[2]]||Quotient[#2,n2]==Quotient[k,n2],Complement[#,{v}],#]&,m,{2}],k->{v}]},
+		If[checkPartilValid[m2,k],{m2},{}]]];
+hasNoDupe=Length@Union[#]==Length[#]&;
+neighborSets=Function[{i,j}
+	,Complement[#,{{i,j}}]&/@{Table[{i,k},{k,n}],Table[{k,j},{k,n}]
+			,(Join@@Table[{ii,jj}+n2{Quotient[i-1,n2],Quotient[j-1,n2]},{ii,n2},{jj,n2}])}
+		];
+checkPartilValid=Function[{m,k},And@@(hasNoDupe[Select[m[[#[[1]],#[[2]]]]&/@#,Length@#==1&]]&/@neighborSets@@k)];
+(*m=refineWith[init,{1,1},3];MatrixForm/@m*)
+splitAt=Function[{m,k},Join@@(refineWith[m,k,#]&/@m[[k[[1]],k[[2]]]])];
+(*MatrixForm/@splitAt[init,{1,1}]*)
+explode=Function[m,With[{lengths=Union[Length/@(Join@@m)]},
+	If[Length@lengths==1,(*Print@m;*){}
+		,DeleteDuplicates[Flatten[Function[pos,Function[v,(*Print[{pos,v}];*)refineWith[m,pos,v]]/@m[[pos[[1]],pos[[2]]]]]/@
+			Position[init,x_/;Length[x]==lengths[[2]]],2]]]
+	]];
+(*MatrixForm/@Nest[Join@@(explode/@#)&,{init},2]*)
