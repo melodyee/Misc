@@ -14,7 +14,23 @@ solve[array_] :=
        Position[newarray, 0, {2}, 1][[1]]] /@ # &, {array}, ! 
     FreeQ[#, 0] &]
 
-
+n=9;n2=Sqrt@n;Clear[neighbors];
+neighbors[i_,j_]:=neighbors[i,j]=DeleteDuplicates[Complement[Table[{i,k},{k,n}],{{i,j}}]~Join~Complement[Table[{k,j},{k,n}],{{i,j}}]~Join~
+		Complement[Join@@Table[Quotient[{i,j}-1,n2]n2+{ii,jj},{ii,n2},{jj,n2}],{{i,j}}]];
+simplifyOne=Function[{i,j,im},Module[{n=Length@im},If[Length@im[[i,j]]==1,im
+		,ReplacePart[im,{i,j}->Complement[im[[i,j]],Union@@Select[im[[#[[1]],#[[2]]]]&/@neighbors[i,j],Length@#==1&]]]]]];
+simplify=Function[im,Module[{om=im,n=Length@im,oldOm},oldOm=om;Do[om=simplifyOne[i,j,om];,{i,n},{j,n}];If[oldOm==om,om,simplify@om]]];
+explodeOne=Function[{m,i},Module[{ln=m[[i]],n=Length@m},
+	If[Length@Flatten@ln==n,{m},Select[simplify@ReplacePart[m,i->List/@#]&/@Select[Tuples[ln],Union@#==Range[n]&],Position[#,{}]=={}&]]]];
+isSol=Function[m,Length@Flatten@m==Length[m]^2];
+explodeAll=Function[m,Module[{oms={m},oldOms,found,sols},
+	oldOms=oms;Do[oms=Join@@(explodeOne[#,i]&/@oms);sols=Select[oms,isSol,1];If[sols!={},found=True;Break[]],{i,Length@im}];
+	If[found,sols,If[oldOms==oms,oms,Join@@(explodeAll/@oms)]]]];
+s="......71...37...8646...8...958.....4....2....7.....391...2...4383...96...21......";
+m=ToExpression@Partition[StringSplit[StringReplace[s,"."->"0"],""],n];(*m//MatrixForm*)
+im=simplify@Map[If[#==0,Range@n,{#}]&,m,{2}];(*im//MatrixForm*)
+(*MatrixForm/@explodeAll[im]//RuntimeTools`Profile*)
+MatrixForm/@explodeAll[im]//AbsoluteTiming
 
 (*index=(#[[1]]-1) n+#[[2]]&;
 uncertainty=Function[{assign,k},-Length@Union[Select[neighborSets@@k,s[[#[[1]],#[[2]]]]!=0&]]];
