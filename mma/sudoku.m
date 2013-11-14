@@ -122,3 +122,29 @@ Partition[VertexColoring[g,Algorithm->Optimum],n]//MatrixForm
 
 Clear[a];as=Array[a,Dimensions@s];b=MapThread[If[#==0,#2,#]&,{s,as},2];
 FindInstance[And[And@@(1<=#<=n&/@Flatten@as),And@@(Flatten@Table[b[[#[[1]],#[[2]]]]!=b[[i,j]]&/@Join@@neighborSets[i,j],{i,n},{j,n}])],Flatten@as,Integers,1]
+
+
+s = "400000805
+  030000000
+  000700000
+  020000060
+  000080400
+  000010000
+  000603070
+  500200000
+  104000000";
+m = ToExpression[StringSplit[#, ""] & /@ StringSplit[s, "\n"]];
+Clear[x]; xs = Array[x, Dimensions[m]];
+board = MapThread[If[# == 0, #2, #] &, {m, xs}, 2]; board // MatrixForm
+(*cost=Function[m,Module[{n=Length@m,isFull,isFull2,withinRange},
+isFull=(Total[#]-Total@Range@n)^2&
+isFull2=(Times@@#-Times@@(Range@n))^2 /Times@@(Range@n)&
+withinRange=If[1<=#<=n,0,1]&
+Total[isFull@#+isFull2@#(*Total[If[Abs[#]<0.3,1,0]&/@Differences[#]*)&/@(\
+Join@@{m,Transpose@m,Flatten/@(Join@@Partition[m,{3,3}])})]
++Total@Flatten@Map[withinRange,m,{2}]
+]];
+r=NMinimize[cost[board](*,1<=#<=9&/@Flatten@xs}*),Flatten@xs,Method->\
+"DifferentialEvolution"];//AbsoluteTiming
+r[[1]]
+Round[board/.r[[2]]]//MatrixForm*)
