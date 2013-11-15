@@ -31,7 +31,7 @@ explodeAll=Function[m,Module[{oms={m},oldOms,found,sols,n=Length@m,searchSpace=T
         oldOms=oms;
 		While[True,(*Also searching over columns slow one case donw. Just heuristic anyway.*)
 			oms=Join@@(Function[im,Module[{typi=SortBy[Select[Join@@{{"R",#,searchSpace[im[[#]]]}&/@Range[n](*,{"C",#,searchSpace[im[[;;,#]]]}&/@Range[n]*)},Last@#!=1&],Last][[1,;;2]]},
-				Print[typi];explodeOne[im,typi[[1]],typi[[2]]]]]/@oms);
+				explodeOne[im,typi[[1]],typi[[2]]]]]/@oms);
 			sols=Select[oms,isSol,1];If[sols!={},found=True;Break[]]];
         If[found,sols,If[oldOms==oms,oms,Join@@(explodeAll/@oms)]]]];
 s="......71...37...8646...8...958.....4....2....7.....391...2...4383...96...21......";
