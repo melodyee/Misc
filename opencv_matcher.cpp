@@ -3,6 +3,17 @@
  *
  * @author A. Huaman
  * @author shuchang.zhou@gmail.com
+ *
+ * To be used with Mathematica m file below:
+rowColumnToXy=Function[{row,column,height},{column-1/2,height-row-1/2}];
+Clear[imageCorrespondingPoints];
+imageCorrespondingPoints[image1_,image2_,opts_:{"Transformation"->"none"}]:=Module[{fnames,imgs={image1,image2},imgHeights},
+	imgHeights=ImageDimensions[#][[2]]&/@imgs;
+	fnames=Table[CreateTemporary[],{Length@imgs+1}];MapThread[Export[#,#2,"JPG"]&,{fnames[[;;2]],imgs}];
+	Import["!/h/bin/opencv_matcher "<>fnames[[1]]<>" "<>fnames[[2]]<>" --output_fname="<>fnames[[3]]<>" --ransac_type="<>("Transformation"/.opts),"Lines"];
+	Transpose[{rowColumnToXy[#[[1,2]]+1,#[[1,1]]+1,imgHeights[[1]]],
+		rowColumnToXy[#[[2,2]]+1,#[[2,1]]+1,imgHeights[[2]]]}&@Partition[#,2]&/@Import@fnames[[3]]]
+	];
  */
 
 #include <stdio.h>
