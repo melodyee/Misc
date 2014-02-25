@@ -14,6 +14,18 @@ imageCorrespondingPoints[image1_,image2_,opts_:{"Transformation"->"none"}]:=Modu
 	Transpose[{rowColumnToXy[#[[1,2]]+1,#[[1,1]]+1,imgHeights[[1]]],
 		rowColumnToXy[#[[2,2]]+1,#[[2,1]]+1,imgHeights[[2]]]}&@Partition[#,2]&/@Import@fnames[[3]]]
 	];
+
+
+(*A comparison with built-n Mathematica function.*)
+imgs=Import[#,ImageSize->400]&/@{"/h/t7.jpg","/h/t2.jpg"};
+matches2=ImageCorrespondingPoints[imgs[[1]],imgs[[2]],"Transformation"->"Perspective"];
+MapThread[annotateImageWithPoints,{imgs,matches2}]
+homog2=homographyFromMatchesL1@matches2;
+anaglyph@{ImagePerspectiveTransformation[imgs[[1]],homog2,DataRange->Full],imgs[[2]]}
+matches=imageCorrespondingPoints[imgs[[1]],imgs[[2]],"Transformation"->"Perspective"];
+MapThread[annotateImageWithPoints,{imgs,matches}]
+homog=homographyFromMatchesL1@matches;
+anaglyph@{ImagePerspectiveTransformation[imgs[[1]],homog,DataRange->Full],imgs[[2]]}
  */
 
 #include <stdio.h>
@@ -27,6 +39,9 @@ imageCorrespondingPoints[image1_,image2_,opts_:{"Transformation"->"none"}]:=Modu
 #include "opencv2/features2d/features2d.hpp"
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/imgproc/imgproc.hpp"
+#include <opencv2/nonfree/nonfree.hpp>
+#include "opencv2/objdetect/objdetect.hpp"
+#include <opencv2/legacy/compat.hpp>
 
 using Eigen::Map;
 using Eigen::Matrix3d;
@@ -41,6 +56,8 @@ DEFINE_string(match_method, "KLT", "KLT/ORB");
 DEFINE_bool(draw_matches, false, "");
 DEFINE_string(output_fname, "", "");
 DEFINE_string(ransac_type, "none", "none/Perspective/Epipolar");
+DEFINE_string(face_cascade_name,
+		"/h/d/opencv-2.4.8/data/haarcascades/haarcascade_frontalface_default.xml", "");
 
 using namespace std;
 using namespace cv;
@@ -255,11 +272,12 @@ void MatchImagePair(
 
   // Parameter names can be looked up in
   // modules/features2d/src/features2d_init.cpp.
+//  Ptr<FeatureDetector> detector =
+//       Algorithm::create<FeatureDetector>("Feature2D.FAST");
+//  detector->set("threshold", 20);
+//  detector->set("nonmaxSuppression", true);
   Ptr<FeatureDetector> detector =
-       Algorithm::create<FeatureDetector>("Feature2D.FAST");
-  detector->set("threshold", 20);
-  detector->set("nonmaxSuppression", true);
-
+         Algorithm::create<FeatureDetector>("Feature2D.SURF");
 //  Ptr<FeatureDetector> detector =
 //      cv::FeatureDetector::create("GridFAST");
 
@@ -285,7 +303,8 @@ void MatchImagePair(
   //  int octaves = 4;
   //  float pattern_scales = 1.0f;
 
-  Ptr<Feature2D> extractor = Algorithm::create<Feature2D>("Feature2D.ORB");
+//  Ptr<Feature2D> extractor = Algorithm::create<Feature2D>("Feature2D.ORB");
+  Ptr<Feature2D> extractor = Algorithm::create<Feature2D>("Feature2D.SURF");
 
   extractor->compute(img_object, *keypoints_object, descriptors_object);
   extractor->compute(img_scene, *keypoints_scene, descriptors_scene);
@@ -311,7 +330,8 @@ void MatchImagePair(
 //    descriptors_scene.convertTo(descriptors_scene, CV_32F);
 //  }
 
-  Ptr<DescriptorMatcher> matcher(new BFMatcher(NORM_HAMMING, true));
+//  Ptr<DescriptorMatcher> matcher(new BFMatcher(NORM_HAMMING, true));
+  Ptr<DescriptorMatcher> matcher(new BFMatcher(cv::NORM_L2, true));
 
   vector< DMatch > matches;
   matcher->match( descriptors_object, descriptors_scene, matches);
@@ -360,6 +380,40 @@ void DrawMatchImage(
   }
 }
 
+
+// Function Headers
+bool detectAndDump(
+		const string& face_cascade_name, const Mat& frame, const string& ofname) {
+	CascadeClassifier face_cascade;
+	if (!face_cascade.load(face_cascade_name)) {
+		LOG(FATAL) << "Unable to load " << face_cascade_name;
+	}
+
+    std::vector<Rect> faces;
+    Mat frame_gray;
+
+    cvtColor(frame, frame_gray, COLOR_BGR2GRAY);
+    equalizeHist(frame_gray, frame_gray);
+
+// Detect faces
+    double scaleFactor = 1.1;
+    int minNeighbors = 3;
+    face_cascade.detectMultiScale(frame_gray, faces, scaleFactor, minNeighbors, 0 | CASCADE_SCALE_IMAGE, Size(30, 30));
+
+	std::ofstream out(ofname, std::ios::out);
+    for (int ic = 0; ic < faces.size(); ic++) {
+        out << faces[ic].x << ",";
+        out << faces[ic].y << ",";
+        out << faces[ic].width << ",";
+        out << faces[ic].height;
+        out << "\n";
+    }
+	out.close();
+	LOG(INFO) << "Written data to file.";
+
+    return true;
+}
+
 /**
  * @function main
  * @brief Main function
@@ -370,10 +424,15 @@ int main( int argc, char** argv ) {
   google::InstallFailureSignalHandler();
   FLAGS_logtostderr = true;
 
+  cv::initModule_nonfree();
+
   if (FLAGS_task == "draw_matches") {
     Mat img_object = imread( argv[1], CV_LOAD_IMAGE_COLOR );
     Mat img_scene = imread( argv[1 + 1], CV_LOAD_IMAGE_COLOR );
     DrawMatchImage(img_object, img_scene, argv[1]);
+  } else if (FLAGS_task == "detect") {
+	  Mat img_object = imread( argv[1], CV_LOAD_IMAGE_COLOR );
+	  detectAndDump(FLAGS_face_cascade_name, img_object, FLAGS_output_fname);
   } else {
     LOG(FATAL) << "Unknown " << FLAGS_task;
   }
