@@ -37,13 +37,22 @@ class Trace(object) :
     print(str(self.pytutor_trace))
     open('/tmp/t.txt','w').write(str(self.pytutor_trace).replace('"','\\"').replace("'",'"').replace('True','true').replace('False','false'))
 
+  def parse_sb_value(self, sb_value):
+    value = sb_value.GetValue()
+    type_ = sb_value.GetType()
+    print (sb_value.GetName(), type_)
+    if type_ == type_.GetBasicType(lldb.eBasicTypeInt):
+      value = int(value)
+    return (sb_value.GetName(), value)
+
   def get_frame_description(self, frame, index):
     locals_ = {}
     sb_value_list = frame.GetVariables(1,1,0,0)
     for i in xrange(sb_value_list.GetSize()):
       sb_value = sb_value_list.GetValueAtIndex(i)
       if sb_value.GetName():
-        locals_[sb_value.GetName()] = sb_value.GetValue()
+        (name, value) = self.parse_sb_value(sb_value)
+        locals_[name] = value
 
     func_name = self.get_function_name(frame)
 
@@ -79,7 +88,8 @@ class Trace(object) :
       try:
         sb_value = sb_value_list.GetValueAtIndex(0)
         if sb_value.GetName():
-          globals_[sb_value.GetName()] = sb_value.GetValue()
+          (name, value) = self.parse_sb_value(sb_value)
+          globals_[name] = value
       except:
         print(("Unexpected error:", sys.exc_info()[0]))
     return globals_
@@ -104,10 +114,7 @@ class Trace(object) :
     globals_ = self.get_globals(target)
     ordered_globals = globals_.keys()
     heap = {}
-    print(frame)
-    print(frame.GetLineEntry())
     line = frame.GetLineEntry().GetLine()
-    print(line)
     event = thread.GetStopDescription(Trace.MAX_STDOUT)
     trace = {
       'ordered_globals' : ordered_globals, 
