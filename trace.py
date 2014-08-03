@@ -5,6 +5,9 @@ import lldb, sys
 import logging
 
 class Trace(object) :
+
+  MAX_STDOUT = 100
+
   def __init__(self):
     self.dbg = lldb.SBDebugger.Create()
     self.dbg.SetAsync(False)
@@ -12,7 +15,8 @@ class Trace(object) :
 
     self.ci = self.dbg.GetCommandInterpreter()
     self.pytutor_trace = {}
-    self.trace = [] 
+    self.trace = []
+    self.stdout = ''
 
   def run(self, argv):
     src, binary = argv[1], argv[2]
@@ -88,13 +92,14 @@ class Trace(object) :
       return func_name
     
   def dump_status(self, target):
-    thread = target.GetProcess().GetSelectedThread()
+    process = target.GetProcess()
+    thread = process.GetSelectedThread()
     frame = thread.GetSelectedFrame()
     print(frame.get_all_variables())
     #self.exec_command('fr v')
     #self.exec_command('ta v')
 
-    stdout = ''
+    self.stdout += process.GetSTDOUT(Trace.MAX_STDOUT)
     stack_to_render = self.get_stack_to_render(thread)
     globals_ = self.get_globals(target)
     ordered_globals = globals_.keys()
@@ -103,10 +108,10 @@ class Trace(object) :
     print(frame.GetLineEntry())
     line = frame.GetLineEntry().GetLine()
     print(line)
-    event = thread.GetStopDescription(100)
+    event = thread.GetStopDescription(Trace.MAX_STDOUT)
     trace = {
       'ordered_globals' : ordered_globals, 
-      'stdout' : stdout, 
+      'stdout' : self.stdout, 
       'func_name' : self.get_function_name(frame), 
       'stack_to_render' : stack_to_render, 
       'globals' : globals_, 
