@@ -31,10 +31,41 @@ class Trace(object) :
     self.exec_command('exit')
     self.pytutor_trace['trace'] = self.trace
     print(str(self.pytutor_trace))
-    open('/tmp/t.txt','w').write(str(self.pytutor_trace).replace('"','\\"').replace("'",'"'))
+    open('/tmp/t.txt','w').write(str(self.pytutor_trace).replace('"','\\"').replace("'",'"').replace('True','true').replace('False','false'))
+
+  def get_frame_description(self, frame, index):
+    locals_ = {}
+    sb_value_list = frame.GetVariables(1,1,0,0)
+    for i in xrange(sb_value_list.GetSize()):
+      sb_value = sb_value_list.GetValueAtIndex(i)
+      if sb_value.GetName():
+        locals_[sb_value.GetName()] = sb_value.GetValue()
+
+    func_name = self.get_function_name(frame)
+
+    desc = {}
+    desc['frame_id'] = index + 1
+    desc['encoded_locals'] = locals_
+    desc['func_name'] = func_name
+    desc['unique_hash'] = func_name + str(index)
+    desc['ordered_varnames'] = locals_.keys()
+
+    # ignore these fields
+    desc['parent_frame_id_list'] = [] 
+    desc['is_zombie'] = False 
+    desc['is_parent'] = False
+ 
+    return desc
 
   def get_stack_to_render(self, thread):
-    return []
+    frames = []
+    num_frames = thread.GetNumFrames()
+    for i in xrange(num_frames):
+      frame = thread.GetFrameAtIndex(i)
+      desc = self.get_frame_description(frame,i)
+      desc['is_highlighted'] = (i == num_frames - 1)
+      frames += [desc]
+    return frames
 
   def get_globals(self, target):
     module = target.module_iter().next()
@@ -49,6 +80,13 @@ class Trace(object) :
         print(("Unexpected error:", sys.exc_info()[0]))
     return globals_
 
+  def get_function_name(self, frame):
+    func_name = frame.GetFunctionName()
+    if func_name == None:
+      return ''
+    else:
+      return func_name
+    
   def dump_status(self, target):
     thread = target.GetProcess().GetSelectedThread()
     frame = thread.GetSelectedFrame()
@@ -57,8 +95,6 @@ class Trace(object) :
     #self.exec_command('ta v')
 
     stdout = ''
-    func_name = frame.GetFunctionName()
-    if func_name == None:func_name = ''
     stack_to_render = self.get_stack_to_render(thread)
     globals_ = self.get_globals(target)
     ordered_globals = globals_.keys()
@@ -71,7 +107,7 @@ class Trace(object) :
     trace = {
       'ordered_globals' : ordered_globals, 
       'stdout' : stdout, 
-      'func_name' : func_name, 
+      'func_name' : self.get_function_name(frame), 
       'stack_to_render' : stack_to_render, 
       'globals' : globals_, 
       'heap' : heap, 
