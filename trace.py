@@ -31,7 +31,12 @@ class Trace(object) :
     succeeded = True
     while succeeded:
       self.dump_status(target)
-      succeeded = self.exec_command('n').Succeeded()
+      succeeded = self.exec_command('s').Succeeded()
+      line_number = self.get_line_number()
+      if line_number == 0:
+        break
+    target.GetProcess().Destroy()
+    print('before exit')
     self.exec_command('exit')
     self.pytutor_trace['trace'] = self.trace
     print(str(self.pytutor_trace))
@@ -76,8 +81,9 @@ class Trace(object) :
     for i in xrange(num_frames):
       frame = thread.GetFrameAtIndex(i)
       desc = self.get_frame_description(frame,i)
-      desc['is_highlighted'] = (i == num_frames - 1)
+      desc['is_highlighted'] = (i == 0)
       frames += [desc]
+      if desc['func_name'] == 'main':break
     return frames
 
   def get_globals(self, target):
@@ -100,12 +106,15 @@ class Trace(object) :
       return ''
     else:
       return func_name
+
+  def get_line_number(self):
+    return self.dbg.GetSelectedTarget().GetProcess().GetSelectedThread().GetSelectedFrame().GetLineEntry().GetLine()
     
   def dump_status(self, target):
     process = target.GetProcess()
     thread = process.GetSelectedThread()
     frame = thread.GetSelectedFrame()
-    print(frame.get_all_variables())
+    #print(frame.get_all_variables())
     #self.exec_command('fr v')
     #self.exec_command('ta v')
 
@@ -114,7 +123,7 @@ class Trace(object) :
     globals_ = self.get_globals(target)
     ordered_globals = globals_.keys()
     heap = {}
-    line = frame.GetLineEntry().GetLine()
+    line = self.get_line_number()
     event = thread.GetStopDescription(Trace.MAX_STDOUT)
     trace = {
       'ordered_globals' : ordered_globals, 
