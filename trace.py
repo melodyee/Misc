@@ -8,6 +8,8 @@ class Trace(object) :
 
   MAX_STDOUT = 100
 
+  MAX_NUM_STEP = 300
+
   def __init__(self):
     self.dbg = lldb.SBDebugger.Create()
     self.dbg.SetAsync(False)
@@ -16,6 +18,7 @@ class Trace(object) :
     self.ci = self.dbg.GetCommandInterpreter()
     self.pytutor_trace = {}
     self.trace = []
+    self.heap = {}
     self.stdout = ''
 
   def run(self, argv):
@@ -29,9 +32,13 @@ class Trace(object) :
     self.exec_command('r')
     target = self.dbg.GetSelectedTarget()
     succeeded = True
+    num_step = 0
     while succeeded:
       self.dump_status(target)
       succeeded = self.exec_command('s').Succeeded()
+      num_step += 1
+      if num_step >= Trace.MAX_NUM_STEP:
+        break
       line_number = self.get_line_number()
       if line_number == 0:
         break
@@ -45,8 +52,10 @@ class Trace(object) :
   def parse_sb_value(self, sb_value):
     value = sb_value.GetValue()
     type_ = sb_value.GetType()
-    print (sb_value.GetName(), type_)
-    if type_ == type_.GetBasicType(lldb.eBasicTypeInt):
+    print (sb_value.GetName(), type_, type_.IsPointerType())
+    if type_.IsPointerType() and int(value, 0) in self.heap:
+      value = ["REF", int(value, 0)]
+    elif type_ == type_.GetBasicType(lldb.eBasicTypeInt):
       value = int(value)
     return (sb_value.GetName(), value)
 
@@ -109,7 +118,21 @@ class Trace(object) :
 
   def get_line_number(self):
     return self.dbg.GetSelectedTarget().GetProcess().GetSelectedThread().GetSelectedFrame().GetLineEntry().GetLine()
-    
+
+  def process_stdout(self, stdout, heap):
+    ALLOC_TAG = 'Alloc = '
+    FREE_TAG = 'free' 
+    if stdout.startswith(ALLOC_TAG):
+      fields = stdout.split()
+      heap[int(fields[2],0)] = ["LIST"] + [0] * int(fields[4])
+      return '\r\n'.join(stdout.split('\r\n')[1:])
+    elif stdout.startswith(FREE_TAG):
+      fields = stdout.split()
+      del heap[int(fields[1],0)]
+      return '\r\n'.join(stdout.split('\r\n')[1:])
+    else:
+      return stdout
+  
   def dump_status(self, target):
     process = target.GetProcess()
     thread = process.GetSelectedThread()
@@ -118,11 +141,11 @@ class Trace(object) :
     #self.exec_command('fr v')
     #self.exec_command('ta v')
 
-    self.stdout += process.GetSTDOUT(Trace.MAX_STDOUT)
+    stdout = self.process_stdout(process.GetSTDOUT(Trace.MAX_STDOUT), self.heap)
+    self.stdout += stdout
     stack_to_render = self.get_stack_to_render(thread)
     globals_ = self.get_globals(target)
     ordered_globals = globals_.keys()
-    heap = {}
     line = self.get_line_number()
     event = thread.GetStopDescription(Trace.MAX_STDOUT)
     trace = {
@@ -131,7 +154,7 @@ class Trace(object) :
       'func_name' : self.get_function_name(frame), 
       'stack_to_render' : stack_to_render, 
       'globals' : globals_, 
-      'heap' : heap, 
+      'heap' : dict(self.heap), 
       'line' : line, 
       'event' : event, 
     };
