@@ -236,6 +236,36 @@ homographyFromImagesCorrelationWithInit=Function[{imgPairIn,qPair,coord,ikm,rank
 	hs2=Switch[rank,3,hs,_,hs[[1]].Transpose[hs[[2]]]];
 	#/#[[-1,-1]]&[lm.(IdentityMatrix[3]+hs2).rm]]];
 
+buildHomography=Function[imgs,Module[{preMatches,matches,rect,homog},
+	preMatches=imageCorrespondingPoints[imgs[[1]],imgs[[2]],"Transformation"->"Perspective"];rect={{420,20},{600,80}}/2;
+	matches=Transpose@Select[Transpose@preMatches,Not@pointInRectangle[#[[1]],rect]&&Not@pointInRectangle[#[[2]],rect]&];
+	homog=homographyFromMatchesRansac[matches,imgs,Inverse@intrinsicParameterMatrix@#&/@imgs];
+	{homog,anaglyph@{ImagePerspectiveTransformation[imgs[[1]],homog,DataRange->Full],imgs[[2]]}
+	,{Show[imgs[[1]],Graphics@{FaceForm[None],EdgeForm[Yellow],Rectangle@@rect}],MapThread[annotateImageWithPoints,{imgs,matches}]}}]];
+buildHomographySimple=Function[imgs,Module[{matches,tr,homog,ikms},
+	tr=FindGeometricTransform[imgs[[2]],imgs[[1]],"Transformation"->"Perspective"];homog=TransformationMatrix[tr[[2]]];
+	If[NumericQ@tr[[1]],{homog,tr[[1]],ImageResize[#,{320}]&@anaglyph@{ImagePerspectiveTransformation[imgs[[1]],homog,DataRange->Full],imgs[[2]]}}]]];
+buildHomographySimple2=Function[imgs,Module[{matches,homog(*,simgs=ImageResize[#,ImageDimensions[#]/4]&/@imgs*),ikms},
+	matches=imageCorrespondingPoints[imgs[[1]],imgs[[2]],"Transformation"->"Perspective"];
+	ikms=Inverse@intrinsicParameterMatrix@#&/@imgs;
+	homog=homographyFromMatchesCalibrated[matches,ikms];
+	{homog,ImageResize[#,{320}]&@anaglyph@{ImagePerspectiveTransformation[
+		imgs[[1]],(*DiagonalMatrix[{1/4,1/4,1}].*)homog(*.DiagonalMatrix[{4,4,1}]*),DataRange->Full],imgs[[2]]}
+	,{Null,ImageResize[#,{320}]&/@MapThread[annotateImageWithPoints,{imgs,matches}]}}]];
+decomposeSameNormalCalibratedHomographyList=Function[homogsIn,Module[{homogs,normal},(*These homographies should be the same plane*)
+	homogs=#/SingularValueList[#][[2]]&/@homogsIn;
+	(*normal=SingularValueDecomposition[SingularValueDecomposition[#][[3,;;,2]]&/@homogs][[3,;;,-1]];*)
+	normal={0,0,1};
+	(*Print[dispRtn@standardizeRtn@#&/@SortBy[decomposeH@#,pnorm2[skewOmega[normal].Normalize[#[[3]]],2]&]&/@homogs];*)
+	standardizeRtn@First@SortBy[decomposeH@#,pnorm2[skewOmega[normal].Normalize[#[[3]]],2]&]&/@homogs]];
+homographyFromMatchesRansac=Function[{matches,imgs,ikms},
+	ransacDriver[randomSampleAtMostN[Transpose@matches,100],If[Length@#>9,homographyFromMatches@Transpose@#,homographyFromMatchesL1@Transpose@#]&
+			,reprojectionErrorHomography[#,Transpose@{#2}]&
+			,0.5(1- nonzeroRatio@ImageData@ImagePerspectiveTransformation[imgs[[1]],#,DataRange->Full])+correlationErrorHomography[#,imgs]&,
+		homographyFromMatchesL1@matches,3,Max[5,Round[0.5 Length@Transpose@matches]],Min[20,Round[0.7 Length@Transpose@matches]],20]];
+
+(*dispRtn/@decomposeSameNormalCalibratedHomographyList[{Inverse[ikm.rs[[1,1]].Inverse[ikm]],ikm.rs[[2,1]].Inverse[ikm]}]*)
+
 
 unitCircleGroup=Function[{a,b},If[Norm[Abs[a]^2-Abs[b]^2-1]>10^-6,Print["Abs[a]^2-Abs[b]^2=!=1"];Abort[],Function[z,(a z+b)/(Conjugate[b]z+Conjugate[a])]]];
 \[Tau]0=0.323;

@@ -1,5 +1,6 @@
 (* ::Package:: *)
 
+printTemporary=(#;)&;
 qlDecomposition=Function[m,Module[{id=N@Reverse@IdentityMatrix[Length@m]},{id.#[[1]].id,id.#[[2]].id}&@QRDecomposition[id.m.id]]];
 imageToPointCloud=Function[img,Module[{m=ImageData@ImageResize[img,{100}],dispF,dim},dim=Dimensions[m][[;;2]];
 	Graphics3D[Flatten@MapIndexed[If[ListQ@#,{RGBColor@@#,Point@Append[#2/dim,Mean@#]},{GrayLevel@#,Point@Append[#2/dim,#]}]&,m,{2}]]]];
@@ -477,9 +478,9 @@ laplacianMatrix1D=Function[n,SparseArray[{Band[{1,1}]->2,Band[{1,2}]->-1,Band[{2
 (*There is little difference at (-1,-1) entry: laplacianMatrix1D[6]-(#.#\[Transpose]&@gradientMatrix1D[6])//MatrixForm*)
 gradientMatrix1D=Function[n,SparseArray[{Band[{1,1}]->1,Band[{1,2}]->-1},{n,n}]];
 balancedGradientMatrix1D=Function[n,SparseArray[{Band[{1,1}]->1,Band[{1,2}]->-1},{n,n}]-SparseArray[{{n,n}->1},{n,n}]];
-normalizedLaplacianMatrixFromAdjacencyMatrix=Function[A,Module[{iD},iD=SparseArray@DiagonalMatrix[If[#==0,1,#^(-0.5)]&/@N@Total@A];
+normalizedLaplacianMatrixFromAdjacencyMatrix=Function[A,Module[{iD},iD=sparseDiagonalMatrix[If[#==0,1,#^(-0.5)]&/@N@Total@A];
 	sparseIdentityMatrix@Length@A-iD.A.iD]];
-laplacianMatrixFromAdjacencyMatrix=Function[A,Module[{D},D=N@Total@A;SparseArray[SparseArray@DiagonalMatrix@D-A]]];
+laplacianMatrixFromAdjacencyMatrix=Function[A,Module[{D},D=N@Total@A;sparseDiagonalMatrix@D-SparseArray[A]]];
 lyapunovSolveSymmetricTranspose=Function[{A,B,C},(*Solves A.X+X\[Transpose]B==C, when A,B symmetric*)If[Transpose[A]!=A||Transpose[B]!=B,Abort[]];
 	LyapunovSolve[A,B,(C+C\[Transpose])/2]+LyapunovSolve[A,B,(C-C\[Transpose])/2]];
 lyapunovSolveTwoSided=Function[{A,B,C,D,E},(*Solves A.X+X.B+C.X.D==E*)Module[{W},
@@ -657,7 +658,7 @@ Rpca2UnitaryWithInit=Function[{D,\[CapitalOmega],initL,initS,iter,unitaryType},M
 	S=\[CapitalOmega] dShrinkage[\[Lambda]/\[Mu],Zs]+(1-\[CapitalOmega]) Zs;
 	If[pnorm[L-OL,2]/pnorm[L,2]<0.0005,Break[]];
     Y=Y+\[Mu](D-L-S);
-	\[Mu]=\[Rho] \[Mu];If[Mod[j,30]==0,PrintTemporary@ImageAdjust@Image@Re[L]];(*(scores=Append[scores,#];Print[#])&@evalPredicted[L,testM2];*)
+	\[Mu]=\[Rho] \[Mu];If[Mod[j,30]==0,printTemporary@ImageAdjust@Image@Re[L]];(*(scores=Append[scores,#];Print[#])&@evalPredicted[L,testM2];*)
 	,{j,iter}];
 	{L,S}]];
 (*Juxtaposing doesn't work.*)
@@ -718,7 +719,7 @@ laplacianMatrixFromGray=Function[{gray,radius},Module[{dim=Dimensions@gray,rules
 	,{i,dim[[1]]},{j,dim[[2]]}]][[2,1]];SparseArray[rules,dim[[1]]dim[[2]]{1,1}]]];
 laplacianMatrixFromMatrix=Function[{gray,mask,radius},sparseDiagonalMatrix[1-vec[mask]].laplacianMatrixFromGray[gray,radius]+sparseDiagonalMatrix[vec[mask]]];
 RpcaColorLevinWeissSimpleLaplaceWithInit=Function[{Gray,Rgb,\[CapitalOmega]in,initL,initS,iter},Module[{A,rgb,dim=Dimensions@Gray,\[CapitalOmega]=SparseArray@\[CapitalOmega]in,L},
-	A=SparseArray[DiagonalMatrix[vec[\[CapitalOmega][[1]]]]+DiagonalMatrix[1-vec[\[CapitalOmega][[1]]]].poissonMatrix[Dimensions@Gray]];
+	A=SparseArray[sparseDiagonalMatrix[vec[\[CapitalOmega][[1]]]]+sparseDiagonalMatrix[1.-vec[\[CapitalOmega][[1]]]].poissonMatrix[Dimensions@Gray]];
 	rgb=Transpose@Partition[LinearSolve[A,vec[#],Method->{"Krylov"(*,Preconditioner->"ILU0"*)}],dim[[1]]]&/@Rgb[[;;]];
 	L=correctWithGray[Gray,#]&@rgb;{L,Rgb-L}]];
 RpcaColorLevinWeissSimpleLaplaceNoCorrectionWithInit=Function[{Gray,Rgb,\[CapitalOmega]in,initL,initS,iter},(*LeastSquares cannot ensure agreeing with Gray*)
@@ -753,11 +754,11 @@ RpcaColorSeparateWithInit=Function[{Gray,D,\[CapitalOmega],initL,initS,iter},
 		L[[i]]=sShrinkage[1/(\[Mu]1+\[Mu]2),Zl[[i]]+\[Mu]2 (k W-Total@L+L[[i]])/(\[Mu]1+\[Mu]2)];
 	,{i,k}];
 	Zs=Y1/\[Mu]1+D-L;
-	S=dShrinkage[\[Lambda]/\[Mu]1 \[CapitalOmega],Zs];
+	S=dShrinkage[\[Lambda]/\[Mu]1 Normal@\[CapitalOmega],Zs];
 	If[pnorm[L-OL,2]/pnorm[L,2]<0.0005,Break[]];
 	Y1=Y1+\[Mu]1(D-L-S);
 	Y2=Y2+\[Mu]2(k W-Total@L);
-	{\[Mu]1,\[Mu]2}*=\[Rho];If[Mod[j,30]==1,PrintTemporary[Image/@L]];
+	{\[Mu]1,\[Mu]2}*=\[Rho];If[Mod[j,30]==1,printTemporary[Image/@L]];
 	,{j,iter}];
 	{correctWithGray[Gray,#]&@L,S}]];
 RpcaColor2=Function[{Gray,Rgb,\[CapitalOmega]in,iter},RpcaColor2WithInit[Gray,Rgb,\[CapitalOmega]in,0 Rgb,0 Rgb,iter]];
@@ -796,12 +797,12 @@ RpcaColorUnitaryWithInit=Function[{Gray,Rgb,\[CapitalOmega]in,initL,initS,iter,u
 			,dShrinkage[0.2/(\[Mu]1+\[Mu]2),Map[#.svdW[[3]]&,Partition[Transpose[svdW[[1]]].Zl,Dimensions@svdW[[3]]],{2}]],{2}],2]*)
 		,"Gray",svdW[[1]].dShrinkage[0.2/(\[Mu]1+\[Mu]2),Transpose[svdW[[1]]].Zl.svdW[[3]]].Transpose[svdW[[3]]]
 		,"SVD",sShrinkage[1/(\[Mu]1+\[Mu]2),Zl]];
-	Zs=Y1/\[Mu]1+D-L;S=dShrinkage[\[Lambda]/\[Mu]1 \[CapitalOmega],Zs];
+	Zs=Y1/\[Mu]1+D-L;S=dShrinkage[\[Lambda]/\[Mu]1 Normal@\[CapitalOmega],Zs];
 	If[Norm[L-OL,"Frobenius"]/Norm[L,"Frobenius"]<0.0005,Break[]];
 	(*Print[{Norm[L-OL,"Frobenius"]/Norm[L,"Frobenius"],Norm[L-OL,"Frobenius"],Norm[L,"Frobenius"],Norm[(1-\[CapitalOmega])(L-rgb),"Frobenius"]}];*)
     X=Transpose@LinearSolve[SparseArray[(\[Eta] T2+\[Mu]2 Ikn)],Transpose[\[Eta] WT-Y2+\[Mu]2 L]];
     Y1=Y1+\[Mu]1(D-L-S);Y2=Y2+\[Mu]2(X-L);{\[Mu]1,\[Mu]2,\[Eta]}*=\[Rho];
-	If[Mod[j,30]==1,PrintTemporary[Image/@foldToTensor[X,dim,2]]];
+	If[Mod[j,30]==1,printTemporary[Image/@foldToTensor[X,dim,2]]];
 	,{j,iter}];
 	{correctWithGray[Gray,#]&@foldToTensor[X,dim,2],foldToTensor[S,dim,2]}]];
 prepareDataRpcaColor=Function[{rawImgs,dim,missingRatio},Module[{\[CapitalOmega],imgs},
@@ -855,10 +856,10 @@ RpcaColorTensor2WithInit=Function[{Gray,D,\[CapitalOmega],initL,initS,iter},
 (*	Zs=MapThread[Function[{Y1,L},Y1/\[Mu]1+D-L],{Y1,L}];
 	S=Table[With[{\[CapitalOmega]i=unfoldTensor[\[CapitalOmega],i],Zsi=unfoldTensor[Zs[[i]],i]},foldToTensor[\[CapitalOmega]i dShrinkage[\[Lambda]/\[Mu]1,Zsi]+(1-\[CapitalOmega]i) Zsi,dim,i]],{i,tensorRank}];*)
 	Zs=Mean[Y1]/\[Mu]1+D-Mean@L;
-	S=dShrinkage[\[Lambda]/\[Mu]1 \[CapitalOmega],Zs];
+	S=dShrinkage[\[Lambda]/\[Mu]1 Normal@\[CapitalOmega],Zs];
 	If[j>1&&pnorm[L-OL,2]/pnorm[L,2]<0.0005,Break[]];
     Y1+=(\[Mu]1(D-#-S)&/@L);Y2+=(\[Mu]2(X-#)&/@L);
-	{\[Mu]1,\[Mu]2,\[Eta]}*=\[Rho];If[Mod[j,30]==1,PrintTemporary@ColorCombine[Image/@X]];(*Ls=Append[Ls,L];*)
+	{\[Mu]1,\[Mu]2,\[Eta]}*=\[Rho];If[Mod[j,30]==1,printTemporary@ColorCombine[Image/@X]];(*Ls=Append[Ls,L];*)
 	,{j,iter}];
 	{correctWithGray[Gray,#]&@X,S}]];
 RpcaColorTensor=Function[{Gray,D,\[CapitalOmega],iter},RpcaColorTensorWithInit[Gray,D,\[CapitalOmega],0D,0D,iter]];
@@ -881,11 +882,11 @@ RpcaColorTensorUnfoldingsWithInit=Function[{Gray,D,\[CapitalOmega],initL,initS,i
 	OL=L;
 	L=Table[foldToTensor[sShrinkage[1/\[Mu]2,unfoldTensor[Zl[[i]],unfoldings[[i]]]],dim,unfoldings[[i]]],{i,Length@unfoldings}];
 	Zs=Y1/\[Mu]1+D-X;
-	S=dShrinkage[\[Lambda]/\[Mu]1 \[CapitalOmega],Zs];
+	S=dShrinkage[\[Lambda]/\[Mu]1 Normal@\[CapitalOmega],Zs];
 	If[j>1&&pnorm[L-OL,2]/(0.000001+pnorm[L,2])<0.0005,Break[]];
 	(*Print[{"{Zl,L,Zs,S}",Dimensions/@{Zl,L,Zs,S}}];*)
     Y1+=\[Mu]1(D-X-S);Y2+=(\[Mu]2(X-#)&/@L);
-	{\[Mu]1,\[Mu]2,\[Eta]}*=\[Rho];If[Mod[j,30]==1,PrintTemporary@ColorCombine[Image/@X]];(*Ls=Append[Ls,L];*)
+	{\[Mu]1,\[Mu]2,\[Eta]}*=\[Rho];If[Mod[j,30]==1,printTemporary@ColorCombine[Image/@X]];(*Ls=Append[Ls,L];*)
 	,{j,iter}];
 	{correctWithGray[Gray,#]&@X,S}]];
 (*RpcaColorTensorUnfoldingsWithInit=Function[{Gray,D,\[CapitalOmega],initL,initS,iter,unfoldings},
@@ -905,11 +906,11 @@ RpcaColorTensorUnfoldingsWithInit=Function[{Gray,D,\[CapitalOmega],initL,initS,i
 (*XXX: This step cannot ensure optimality*)
 	L=Table[foldToTensor[sShrinkage[1/\[Mu]2,unfoldTensor[Zl,unfoldings[[i]]]],dim,unfoldings[[i]]],{i,Length@unfoldings}];
 	Zs=Y1/\[Mu]1+D-X;
-	S=dShrinkage[\[Lambda]/\[Mu]1 \[CapitalOmega],Zs];
+	S=dShrinkage[\[Lambda]/\[Mu]1 Normal@\[CapitalOmega],Zs];
 	If[j>1&&pnorm[L-OL,2]/(0.000001+pnorm[L,2])<0.0005,Break[]];
 	(*Print[{"{Zl,L,Zs,S}",Dimensions/@{Zl,L,Zs,S}}];*)
     Y1+=\[Mu]1(D-X-S);Y2+=(\[Mu]2(X-#)&/@L);
-	{\[Mu]1,\[Mu]2,\[Eta]}*=\[Rho];If[Mod[j,30]==1,PrintTemporary@ColorCombine[Image/@X]];(*Ls=Append[Ls,L];*)
+	{\[Mu]1,\[Mu]2,\[Eta]}*=\[Rho];If[Mod[j,30]==1,printTemporary@ColorCombine[Image/@X]];(*Ls=Append[Ls,L];*)
 	,{j,iter}];
 	{correctWithGray[Gray,#]&@X,S}]];*)
 RpcaColorTensorLaplace=Function[{Gray,D,\[CapitalOmega],iter},RpcaColorTensorLaplaceWithInit[Gray,D,\[CapitalOmega],0D,0D,iter]];
@@ -936,10 +937,10 @@ RpcaColorTensorLaplaceWithInit=Function[{Gray,D,\[CapitalOmega],initL,initS,iter
 	OL=L;
 	L=Table[foldToTensor[sShrinkage[1/\[Mu]2,unfoldTensor[Zl[[i]],unfoldings[[i]]]],dim,unfoldings[[i]]],{i,Length@unfoldings}];
 	Zs=Y1/\[Mu]1+D-X;
-	S=dShrinkage[\[Lambda]/\[Mu]1 \[CapitalOmega],Zs];
+	S=dShrinkage[\[Lambda]/\[Mu]1 Normal@\[CapitalOmega],Zs];
 	If[j>1&&pnorm[L-OL,2]/(0.000001+pnorm[L,2])<0.0005,Break[]];
     Y1+=\[Mu]1(D-X-S);Y2+=(\[Mu]2(X-#)&/@L);
-	{\[Mu]1,\[Mu]2,\[Eta]}*=\[Rho];If[Mod[j,20]==1,PrintTemporary@ColorCombine[Image/@X]];(*Ls=Append[Ls,L];*)
+	{\[Mu]1,\[Mu]2,\[Eta]}*=\[Rho];If[Mod[j,20]==1,printTemporary@ColorCombine[Image/@X]];(*Ls=Append[Ls,L];*)
 	,{j,iter}];
 	{correctWithGray[Gray,#]&@X,S}]];
 RpcaColorTensorSimpleLaplaceWithInit=Function[{Gray,D,\[CapitalOmega],initL,initS,iter},
@@ -960,10 +961,10 @@ RpcaColorTensorSimpleLaplaceWithInit=Function[{Gray,D,\[CapitalOmega],initL,init
 	OL=L;
 	L=Table[foldToTensor[sShrinkage[1/\[Mu]2,unfoldTensor[Zl[[i]],unfoldings[[i]]]],dim,unfoldings[[i]]],{i,Length@unfoldings}];
 	Zs=Y1/\[Mu]1+D-X;
-	S=dShrinkage[\[Lambda]/\[Mu]1 \[CapitalOmega],Zs];
+	S=dShrinkage[\[Lambda]/\[Mu]1 Normal@\[CapitalOmega],Zs];
 	If[j>1&&pnorm[L-OL,2]/(0.000001+pnorm[L,2])<0.0005,Break[]];
     Y1+=\[Mu]1(D-X-S);Y2+=(\[Mu]2(X-#)&/@L);
-	{\[Mu]1,\[Mu]2,\[Eta]}*=\[Rho];If[Mod[j,20]==1,PrintTemporary@ColorCombine[Image/@X]];(*Ls=Append[Ls,L];*)
+	{\[Mu]1,\[Mu]2,\[Eta]}*=\[Rho];If[Mod[j,20]==1,printTemporary@ColorCombine[Image/@X]];(*Ls=Append[Ls,L];*)
 	,{j,iter}];
 	{correctWithGray[Gray,#]&@X,S}]];
 partitionMatrices=Function[{ms,k},Module[{dim=Dimensions@ms,dim2},
@@ -1079,13 +1080,13 @@ testTnnRpca=Function[{rawImg,mask,numIter,numIterSubstep,rank},Module[{dim,img,L
 	Print["out-before"];Print[truncatedNuclearNorm[X,U,V,1,\[CapitalOmega],Rgb]];
 	X=tnnRpcaStep2Admm[Rgb,\[CapitalOmega],U,V,iterStep2];
 	Print["out-after"];Print[truncatedNuclearNorm[X,U,V,1,\[CapitalOmega],Rgb]];
-	PrintTemporary[CombineRGB[X]];
+	printTemporary[CombineRGB[X]];
 	,{iter}];X
 ]];*)
 (*testTnnRpca[Import@"~/t.jpg",mask,100,100,100]*)
 nmfAdmmCostFunction=Function[{W,H,D,\[Mu]},\[Mu]/2 SparseNonZeroFrobeniusResidue[D,W,H]^2];
 nmfAdmm=Function[{Din,\[CapitalOmega]in,r,niter,method},
-	Module[{D=N@SparseArray@Din,Y,m,n,residues={},W,H,nzs,V2,\[CapitalOmega]=N@SparseArray@\[CapitalOmega]in,eps=N[10^-6],debug=PrintTemporary[#]&
+	Module[{D=N@SparseArray@Din,Y,m,n,residues={},W,H,nzs,V2,\[CapitalOmega]=N@SparseArray@\[CapitalOmega]in,eps=N[10^-6],debug=printTemporary[#]&
 		,\[Mu],norm2=SingularValueDecomposition[Din,1][[2,1,1]],\[Rho],V},
 	If[Complement[D["NonzeroPositions"],\[CapitalOmega]["NonzeroPositions"]]!={},Throw["\[CapitalOmega]in not cotinaing Din"]];
 	{m,n}=Dimensions[D];{W,H}=RandomReal[{eps,1},#]&/@{{m,r},{r,n}};\[Mu]=1.25/norm2;\[Rho]=1.05;V=Y=0D;nzs=\[CapitalOmega]["NonzeroPositions"];
@@ -1117,7 +1118,7 @@ nmfAdmm=Function[{Din,\[CapitalOmega]in,r,niter,method},
 	]];
 rnmfCostFunction=Function[{W,H,S,D,\[Mu],\[CapitalOmega]},{Total@#,#}&@{Total[Flatten@Abs[\[CapitalOmega] S]],\[Mu]/2 Total@Flatten[(D-S-W.H)^2]}];
 Rnmf=Function[{Din,\[CapitalOmega],r,niter,method},
-	Module[{D=N@Din,S,Y,m,n,residues={},W,H,eps=If[method=="KL",N[10^-6],0],debug=PrintTemporary[#]&,\[Mu],norm2=SingularValueDecomposition[Din,1][[2,1,1]],\[Rho],V,V2,Zs},
+	Module[{D=N@Din,S,Y,m,n,residues={},W,H,eps=If[method=="KL",N[10^-6],0],debug=printTemporary[#]&,\[Mu],norm2=SingularValueDecomposition[Din,1][[2,1,1]],\[Rho],V,V2,Zs},
 	If[Complement[SparseArray[D]["NonzeroPositions"],SparseArray[\[CapitalOmega]]["NonzeroPositions"]]!={},Throw["\[CapitalOmega]in not cotinaing Din"]];
 	{m,n}=Dimensions[D];{W,H}=RandomReal[{eps,1},#]&/@{{m,r},{r,n}};\[Mu]=125/norm2;\[Rho]=1.05;V=S=Y=0D;
 	Do[
@@ -1633,7 +1634,7 @@ fuseRgbLuminance=Function[{smallRgb,luminance},
 	ColorCombine[Prepend[Rest@ColorSeparate[ImageResize[smallRgb,ImageDimensions@luminance],"LAB"],luminance],"LAB"]];
 
 
-showTensor3=Function[m,ImageResize[ColorCombine[Image/@m],400{1,1}]];
+showTensor3=Function[m,ImageResize[ColorCombine[Image/@m],{400}]];
 showFourier2D =Image@RotateLeft[#, Floor[Dimensions[#]/2]] & /@ {Abs@#, Arg@#} &;
 getQuaternionAdb=Function[{},Run@"/usr/local/bin/adb logcat -c";
 	ImportString[StringSplit[Import["!/usr/local/bin/adb logcat -t 1 -s ROTV:I","Lines"],": "][[-1,2]],"CSV"][[1,-4;;]]];

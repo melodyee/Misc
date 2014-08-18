@@ -18,6 +18,9 @@ evalOneHotSupportVector=Function[{ws,testFeatures,testResponse},If[Dimensions[ws
 showImage=Function[v,Partition[v,28]//Image];showImage/@trainFeatures[[;;10]]
 
 
+Import["/h/DigitRecognizer/train1.csv"]
+
+
 mean=Mean[trainFeatures];scale=255 Norm[trainFeatures[[1]]]/Length[trainFeatures[[1]]];
 trainFeaturesS=(#-mean&/@trainFeatures)/scale;
 testFeaturesS=(#-mean&/@testFeatures)/scale;

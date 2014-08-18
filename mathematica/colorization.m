@@ -10,6 +10,10 @@ RpcaColorShrinkOverLinearWithInit=Function[{Gray,Rgb,\[CapitalOmega]in,initL,ini
 	A2=SparseArray[DiagonalMatrix[1-vec[\[CapitalOmega][[1]]]].poissonMatrix[Dimensions@Gray]];A=SparseArray[DiagonalMatrix[vec[\[CapitalOmega][[1]]]]+A2];
 	rgb=unVec[shrinkageOverLinear[List/@vec@shrinkage["SVD",#,unVec[vec@#2,dim]]&,0.08,A,List/@(vec[#]+A2.vec[Gray]),30],dim]&/@Rgb[[;;]];
 	L=correctWithGray[Gray,#]&@rgb;{L,Rgb-L}]];
+RpcaColorShrinkTVWithInit=Function[{Gray,Rgb,\[CapitalOmega]in,initL,initS,iter},Module[{A,A2,rgb,dim=Dimensions@Gray,\[CapitalOmega]=SparseArray@\[CapitalOmega]in,L},
+	A2=SparseArray[sparseDiagonalMatrix[1-vec[\[CapitalOmega][[1]]]].poissonMatrix[Dimensions@Gray]];A=SparseArray[sparseDiagonalMatrix[vec[\[CapitalOmega][[1]]]]+A2];
+	rgb=totalVariationShrinkage[0.02,A,unVec[vec[#]+A2.vec[Gray],dim],50]&/@Rgb[[;;]];
+	L=correctWithGray[Gray,#]&@rgb;{L,Rgb-L}]];
 imageTiling=Function[img,Module[{m=ImageData@img,dim,dim2,selectClosesFactor},
 	selectClosesFactor=Function[{big,target},First@SortBy[Divisors@big,Norm[#-target]&]];
 	If[Length@Dimensions@m==3,ColorCombine[imageTiling/@ColorSeparate[img]],
@@ -21,36 +25,6 @@ inverseImageTiling=Function[{img,origDim},Module[{m=ImageData@img,dim2,selectClo
 		dim2=MapThread[selectClosesFactor,{origDim,Sqrt@origDim}];blockDim=origDim/dim2;
 		ImageAssemble@Map[Image,Partition[Transpose@unVec[#,dim2]&/@m,blockDim[[2]]],{2}]
 	]]];
-
-homographyFromMatchesRansac=Function[{matches,imgs,ikms},
-	ransacDriver[randomSampleAtMostN[Transpose@matches,100],If[Length@#>9,homographyFromMatches@Transpose@#,homographyFromMatchesL1@Transpose@#]&
-			,reprojectionErrorHomography[#,Transpose@{#2}]&
-			,0.5(1- nonzeroRatio@ImageData@ImagePerspectiveTransformation[imgs[[1]],#,DataRange->Full])+correlationErrorHomography[#,imgs]&,
-		homographyFromMatchesL1@matches,3,Max[5,Round[0.5 Length@Transpose@matches]],Min[20,Round[0.7 Length@Transpose@matches]],20]];
-
-buildHomography=Function[imgs,Module[{preMatches,matches,rect,homog},
-	preMatches=imageCorrespondingPoints[imgs[[1]],imgs[[2]],"Transformation"->"Perspective"];rect={{420,20},{600,80}}/2;
-	matches=Transpose@Select[Transpose@preMatches,Not@pointInRectangle[#[[1]],rect]&&Not@pointInRectangle[#[[2]],rect]&];
-	homog=homographyFromMatchesRansac[matches,imgs,Inverse@intrinsicParameterMatrix@#&/@imgs];
-	{homog,anaglyph@{ImagePerspectiveTransformation[imgs[[1]],homog,DataRange->Full],imgs[[2]]}
-	,{Show[imgs[[1]],Graphics@{FaceForm[None],EdgeForm[Yellow],Rectangle@@rect}],MapThread[annotateImageWithPoints,{imgs,matches}]}}]];
-buildHomographySimple=Function[imgs,Module[{matches,tr,homog,ikms},
-	tr=FindGeometricTransform[imgs[[2]],imgs[[1]],"Transformation"->"Perspective"];homog=TransformationMatrix[tr[[2]]];
-	If[NumericQ@tr[[1]],{homog,tr[[1]],ImageResize[#,{320}]&@anaglyph@{ImagePerspectiveTransformation[imgs[[1]],homog,DataRange->Full],imgs[[2]]}}]]];
-buildHomographySimple2=Function[imgs,Module[{matches,homog(*,simgs=ImageResize[#,ImageDimensions[#]/4]&/@imgs*),ikms},
-	matches=imageCorrespondingPoints[imgs[[1]],imgs[[2]],"Transformation"->"Perspective"];
-	ikms=Inverse@intrinsicParameterMatrix@#&/@imgs;
-	homog=homographyFromMatchesCalibrated[matches,ikms];
-	{homog,ImageResize[#,{320}]&@anaglyph@{ImagePerspectiveTransformation[
-		imgs[[1]],(*DiagonalMatrix[{1/4,1/4,1}].*)homog(*.DiagonalMatrix[{4,4,1}]*),DataRange->Full],imgs[[2]]}
-	,{Null,ImageResize[#,{320}]&/@MapThread[annotateImageWithPoints,{imgs,matches}]}}]];
-decomposeSameNormalCalibratedHomographyList=Function[homogsIn,Module[{homogs,normal},(*These homographies should be the same plane*)
-	homogs=#/SingularValueList[#][[2]]&/@homogsIn;
-	(*normal=SingularValueDecomposition[SingularValueDecomposition[#][[3,;;,2]]&/@homogs][[3,;;,-1]];*)
-	normal={0,0,1};
-	(*Print[dispRtn@standardizeRtn@#&/@SortBy[decomposeH@#,pnorm2[skewOmega[normal].Normalize[#[[3]]],2]&]&/@homogs];*)
-	standardizeRtn@First@SortBy[decomposeH@#,pnorm2[skewOmega[normal].Normalize[#[[3]]],2]&]&/@homogs]];
-(*dispRtn/@decomposeSameNormalCalibratedHomographyList[{Inverse[ikm.rs[[1,1]].Inverse[ikm]],ikm.rs[[2,1]].Inverse[ikm]}]*)
 
 RpcaColorLevinWeissLabWithInit=Function[{Luminance,Rgb,\[CapitalOmega]in,initL,initS,iter},Module[{A,rgb,lab,dim=Dimensions@Luminance},
 	lab=ColorSeparate[ColorCombine[Image/@Rgb],"LAB"];
@@ -64,6 +38,30 @@ RpcaColorLevinWeissOrigWithInit=Function[{gray,rgb\[CapitalOmega],\[CapitalOmega
 	{ImageData/@ColorSeparate@Import[fnames[[-1]],"PNG"],0 rgb\[CapitalOmega]}
 	(*Map[{#,#,#}&,gray,{2}]+foldToTensor[rgb\[CapitalOmega],{3,Dimensions[rgb\[CapitalOmega]][[1]],Dimensions[rgb\[CapitalOmega]][[2]]/3},2]*)
 	]];
+Clear[colorLevinWeiss];
+colorLevinWeiss[Gray_List,Rgb_List,\[CapitalOmega]in_List,OptionsPattern[{"CorrectGray"->True,"GrayLaplacianRadius"->1,"Method"->"PartialLaplacian"}]]:=
+		Module[{A,rgb,dim=Dimensions@Gray,L,\[CapitalOmega]=SparseArray[\[CapitalOmega]in],lapG=laplacianMatrixFromGray[Gray,OptionValue["GrayLaplacianRadius"]],diagMask,\[Lambda]=1
+			,complementDiagMask},
+	diagMask=sparseDiagonalMatrix[vec[\[CapitalOmega][[1]]]];complementDiagMask=sparseIdentityMatrix[Length@diagMask]-diagMask;
+	Switch[OptionValue["Method"]
+		,"FullLaplacian",A=vertcat[lapG,\[Lambda] diagMask];rgb=Transpose@Partition[
+			LeastSquares[A,Join[0vec[#],\[Lambda] vec[#]],Method->{"Krylov"(*,Preconditioner->"ILU0"*)}],dim[[1]]]&/@Rgb;
+		,"PartialLaplacian",A=complementDiagMask.lapG+diagMask;
+			rgb=unVec[LinearSolve[A,vec[#],Method->{"Krylov"(*,Preconditioner->"ILU0"*)}],dim]&/@Rgb
+		,"NoGray",A=complementDiagMask.lapG+diagMask;
+			rgb=Gray+unVec[LinearSolve[A,vec[#]-diagMask.vec[Gray],Method->{"Krylov"(*,Preconditioner->"ILU0"*)}],dim]&/@Rgb
+		,"AddGray",A=complementDiagMask.lapG+diagMask;
+			rgb=unVec[LinearSolve[A,vec[#]+complementDiagMask.lapG.vec[Gray],Method->{"Krylov"(*,Preconditioner->"ILU0"*)}],dim]&/@Rgb];
+	L=If[OptionValue["CorrectGray"],correctWithGray[Gray,#],#]&@rgb;(*Append[rg,Length[Rgb] Gray-Total@rg]*)
+	{L,Rgb-L}];
+(*i=5;{L[i],S[i]}=colorLevinWeiss[noisyGray,noisyRgb\[CapitalOmega],masks];//AbsoluteTiming
+evalColorResult[L[i],S[i]]
+i=6;{L[i],S[i]}=colorLevinWeiss[noisyGray,noisyRgb\[CapitalOmega],masks,"CorrectGray"->False];//AbsoluteTiming
+evalColorResult[L[i],S[i]]
+i=7;{L[i],S[i]}=colorLevinWeiss[noisyGray,noisyRgb\[CapitalOmega],masks,"Method"->"NoGray","CorrectGray"->False];//AbsoluteTiming
+evalColorResult[L[i],S[i]]
+i=9;{L[i],S[i]}=colorLevinWeiss[noisyGray,noisyRgb\[CapitalOmega],masks,"Method"->"AddGray","CorrectGray"->False];//AbsoluteTiming
+evalColorResult[L[i],S[i]]*)
 testRpcaColorAlgorithms=Function[{dataSets,type,outputDir,noiseF},
 	Module[{numIter=400,prefix,L,S,isRgb,imgs,gray,trueGray,rawRgb,raw\[CapitalOmega],rgb,rgb\[CapitalOmega],\[CapitalOmega],initL,initS,t,result,recordResult,totalResult={}
 		,missingRatios,imageDimensions,n\[CapitalOmega],partialColored},
@@ -92,7 +90,8 @@ testRpcaColorAlgorithms=Function[{dataSets,type,outputDir,noiseF},
 		MapThread[Export,{{"/tmp/orig.png","/tmp/gI.png","/tmp/colorIm.png","/tmp/cI.png"}
 			,{ColorCombine[Image/@rgb],Image@gray,Image@\[CapitalOmega][[1]],ColorCombine[Image/@partialColored]}}];
 		initL=initS=0rgb\[CapitalOmega];
-		prefix={"name"/.dataSet,missingRatio,imageDimension};If[isRgb,trueGray=ImageData@ColorConvert[ImageResize[ColorCombine[imgs],imageDimension],"Gray"]];
+		prefix={"name"/.dataSet,missingRatio,imageDimension};If[isRgb
+			,trueGray=ImageData@First@ColorSeparate[ImageResize[ColorCombine[imgs],imageDimension],"Gray"]];
 		Switch[type
 		,"unfoldings",
 			result=RpcaColorLevinWeissSimpleLaplaceWithInit[gray,rgb\[CapitalOmega],\[CapitalOmega],initL,initS,numIter]//AbsoluteTiming;
@@ -177,11 +176,12 @@ testRpcaColorAlgorithms=Function[{dataSets,type,outputDir,noiseF},
 	totalResult
 	]];
 
+evalColorResult=Function[{L,S,rgb,masks},With[{scale=1/pnorm[rgb,2]},
+	{"rgb"->pnorm[rgb-L,2]scale,"gray"->pnorm[Mean[L]-Mean@rgb,2]scale,"LS"->showTensor3/@{L,S}
+		,"unknown"->pnorm[(rgb-L)(1-masks),2]/pnorm[rgb (1-masks),2]
+	(*,"residue"->ImageAdjust@ImageDifference[rgb//showTensor3,L//showTensor3]*)}]];
 
-(*imgs=Import["/h/t*.jpg",ImageSize->400]
-img=imgs[[2]];*)
-
-SeedRandom[1003];dim=128{1,1};{gray,rgb,masks}=prepareDataRpcaColor[ColorSeparate[Import["/h/t11.jpg",ImageSize->dim]],dim,0.9];
+(*SeedRandom[1003];dim=128{1,1};{gray,rgb,masks}=prepareDataRpcaColor[ColorSeparate[Import["/h/t11.jpg",ImageSize->dim]],dim,0.9];
 (*\[CapitalOmega]=ImageData@Erosion[Image@randomSparseTensor[dim{1,1},0.9],2];masks={\[CapitalOmega],\[CapitalOmega],\[CapitalOmega]};*)
 noiseF=(*RandomVariate@LaplaceDistribution[0,0.02]*)0&;
 noisyGray=Map[#+noiseF[]&,gray,{-1}];
@@ -189,6 +189,9 @@ noisyGray=Map[#+noiseF[]&,gray,{-1}];
 noisyRgb\[CapitalOmega]=masks Map[#+noiseF[]&,rgb,{-1}];
 {gray//Image,noisyGray//Image,rgb//showTensor3,noisyRgb\[CapitalOmega]//showTensor3}
 Dimensions/@{gray,rgb,masks}
+*)
+dict=Join@@Table[ToExpression[FileBaseName@#]->Import[#]&/@FileNames["/h/BSDS300/images/"<>tag<>"/*.jpg"],{tag,{"test","train"}}];
+imgs={65010,119082,365073,76053,208001,69015,102061,181079}/.dict;
 
 
 n=128;img=ImageResize[ExampleData[{"TestImage","Girl3"}],n{1,1}];img//ImageDimensions
@@ -244,42 +247,116 @@ r2={Riffle[{"name","time","rse","gray","rgb","corr"},{"name","time","rse","gray"
 (*testRpcaColorAlgorithms[dataSets,"block","/tmp"]*)
 
 
-evalColorResult=Function[{L,S},With[{scale=1/pnorm[rgb,2]},
-	{{"rgb",pnorm[rgb-L,2]scale,"gray",pnorm[Mean[L]-Mean@rgb,2]scale},showTensor3/@{L,S},{"unknown",pnorm[(rgb-L)(1-masks),2]/pnorm[rgb (1-masks),2]}
-	,ImageAdjust@ImageDifference[rgb//showTensor3,L//showTensor3]}]];
-Clear[colorLevinWeiss];
-colorLevinWeiss[Gray_List,Rgb_List,\[CapitalOmega]in_List,OptionsPattern[{"CorrectGray"->True,"GrayLaplacianRadius"->1,"Method"->"PartialLaplacian"}]]:=
-		Module[{A,rgb,dim=Dimensions@Gray,L,\[CapitalOmega]=SparseArray[\[CapitalOmega]in],lapG=laplacianMatrixFromGray[Gray,OptionValue["GrayLaplacianRadius"]],diagMask,\[Lambda]=1
-			,complementDiagMask},
-	diagMask=sparseDiagonalMatrix[vec[\[CapitalOmega][[1]]]];complementDiagMask=sparseIdentityMatrix[Length@diagMask]-diagMask;
-	Switch[OptionValue["Method"]
-		,"FullLaplacian",A=vertcat[lapG,\[Lambda] diagMask];rgb=Transpose@Partition[
-			LeastSquares[A,Join[0vec[#],\[Lambda] vec[#]],Method->{"Krylov"(*,Preconditioner->"ILU0"*)}],dim[[1]]]&/@Rgb;
-		,"PartialLaplacian",A=complementDiagMask.lapG+diagMask;
-			rgb=unVec[LinearSolve[A,vec[#],Method->{"Krylov"(*,Preconditioner->"ILU0"*)}],dim]&/@Rgb
-		,"NoGray",A=complementDiagMask.lapG+diagMask;
-			rgb=Gray+unVec[LinearSolve[A,vec[#]-diagMask.vec[Gray],Method->{"Krylov"(*,Preconditioner->"ILU0"*)}],dim]&/@Rgb
-		,"AddGray",A=complementDiagMask.lapG+diagMask;
-			rgb=unVec[LinearSolve[A,vec[#]+complementDiagMask.lapG.vec[Gray],Method->{"Krylov"(*,Preconditioner->"ILU0"*)}],dim]&/@Rgb];
-	L=If[OptionValue["CorrectGray"],correctWithGray[Gray,#],#]&@rgb;(*Append[rg,Length[Rgb] Gray-Total@rg]*)
-	{L,Rgb-L}];
-i=5;{L[i],S[i]}=colorLevinWeiss[noisyGray,noisyRgb\[CapitalOmega],masks];//AbsoluteTiming
-evalColorResult[L[i],S[i]]
-i=6;{L[i],S[i]}=colorLevinWeiss[noisyGray,noisyRgb\[CapitalOmega],masks,"CorrectGray"->False];//AbsoluteTiming
-evalColorResult[L[i],S[i]]
-i=7;{L[i],S[i]}=colorLevinWeiss[noisyGray,noisyRgb\[CapitalOmega],masks,"Method"->"NoGray","CorrectGray"->False];//AbsoluteTiming
-evalColorResult[L[i],S[i]]
-i=9;{L[i],S[i]}=colorLevinWeiss[noisyGray,noisyRgb\[CapitalOmega],masks,"Method"->"AddGray","CorrectGray"->False];//AbsoluteTiming
-evalColorResult[L[i],S[i]]
+(*nzRatio=0.01;dim=Round[N[128]#/Max@#&@Reverse@ImageDimensions@img];
+	SeedRandom[1003];{gray,rgb,masks}=prepareDataRpcaColor[ColorSeparate[ImageResize[img,Reverse@dim]],dim,1-nzRatio];
+LS=RpcaColorLevinWeissLabWithInit[ImageData@First@ColorSeparate[ImageResize[img,Reverse@dim],"LAB"],rgb masks,masks,0masks,0masks,100];
+evalColorResult[LS[[1]],LS[[2]]]
+LS2={correctWithGray[gray,LS[[1]]],LS[[2]]};
+evalColorResult[LS2[[1]],LS2[[2]]]
+LS=RpcaColorLevinWeissNoCorrectGrayWithInit[gray,rgb masks,masks,0masks,0masks,100];
+evalColorResult[LS[[1]],LS[[2]]]*)
 
 
-RpcaColorShrinkTVWithInit=Function[{Gray,Rgb,\[CapitalOmega]in,initL,initS,iter},Module[{A,A2,rgb,dim=Dimensions@Gray,\[CapitalOmega]=SparseArray@\[CapitalOmega]in,L},
-	A2=SparseArray[sparseDiagonalMatrix[1-vec[\[CapitalOmega][[1]]]].poissonMatrix[Dimensions@Gray]];A=SparseArray[sparseDiagonalMatrix[vec[\[CapitalOmega][[1]]]]+A2];
-	rgb=totalVariationShrinkage[0.02,A,unVec[vec[#]+A2.vec[Gray],dim],50]&/@Rgb[[;;]];
-	L=correctWithGray[Gray,#]&@rgb;{L,Rgb-L}]];
+localColorConsistencyTransform=Function[f,Module[{initL,n\[CapitalOmega]},Function[{Gray,Rgb,\[CapitalOmega]in,initL0,initS,iter},
+	{initL,n\[CapitalOmega]}=localColorConsistencyInterpolation[Gray,unfoldTensor[Rgb,2],unfoldTensor[\[CapitalOmega]in,2],0.05,20];
+	f[Gray,initL,n\[CapitalOmega],initL,initS,iter]]]];
+RpcaColorLevinWeissNoCorrectGrayWithInit=Function[{gray,rgb,masks,initL,initS,iter},
+	colorLevinWeiss[gray,rgb,masks,"CorrectGray"->False]];
+(*LLW's result without correction by gray is close to: TotalVariationFilter[gray//Image,0.2]*)
+noiseF=(*RandomVariate@LaplaceDistribution[0,0.02]*)0&;
+(*noisyGray=ImageData@ImageResize[ImageResize[#,ImageDimensions[#]/2],ImageDimensions@#]&@Image@gray;*)
+evalRpcaColorAlgorithms=Function[{img,scale,nzRatio,noise,algoFs},Module[{dim,gray,rgb,masks,noisyGray,noisyRgb\[CapitalOmega],LS,time,noiseF},
+	dim=Round[N[scale]#/Max@#&@Reverse@ImageDimensions@img];
+	SeedRandom[1003];{gray,rgb,masks}=prepareDataRpcaColor[ColorSeparate[ImageResize[img,Reverse@dim]],dim,1-nzRatio];
+    noiseF=If[noise==0,0,RandomVariate@NormalDistribution[0,noise]]&;
+(*\[CapitalOmega]=ImageData@Erosion[Image@randomSparseTensor[dim{1,1},0.9],2];masks={\[CapitalOmega],\[CapitalOmega],\[CapitalOmega]};*)
+	noisyGray=Map[#+noiseF[]&,gray,{-1}];
+	noisyRgb\[CapitalOmega]=masks Map[#+noiseF[]&,rgb,{-1}];
+	(*Print@{pnorm[rgb-{gray,gray,gray},2]/pnorm[rgb,2],gray//Image,noisyGray//Image,rgb//showTensor3,noisyRgb\[CapitalOmega]//showTensor3};*)
+	Print[{Dimensions/@{gray,rgb,masks},nzRatio,noise}];
+	Parallelize@Table[time=First[LS=ReleaseHold[algoF][noisyGray,noisyRgb\[CapitalOmega],masks,0masks,0masks,100];//AbsoluteTiming];Print[algoF];
+		Append[{"name"->algoF,"time"->time,"nonzeroRatio"->nzRatio,"dim"->dim,"noise"->noise},evalColorResult[LS[[1]],LS[[2]],rgb,masks]]
+	,{algoF,algoFs}]]];
+algoFs={Hold[RpcaColorLevinWeissWithInit],Hold[RpcaColorLevinWeissSimpleLaplaceWithInit]
+	,Hold[RpcaColor2WithInit],Hold[localColorConsistencyTransform@RpcaColor2WithInit]
+	,Hold[RpcaColorTensorWithInit],Hold[localColorConsistencyTransform@RpcaColorTensorWithInit]
+	,Hold[RpcaColorTensorSimpleLaplaceWithInit],Hold[localColorConsistencyTransform@RpcaColorTensorSimpleLaplaceWithInit]
+	,Hold[RpcaColorTensorLaplaceWithInit],Hold[localColorConsistencyTransform@RpcaColorTensorLaplaceWithInit]
+	};
+nzRatios=(*{0.001,0.002,0.005,0.01,0.02,0.05,0.1,0.2,0.5,0.7,0.9};*){0.001,0.01,0.1,0.3}
+(*Table[
+tb=Do[Export["/h/mxs/"<>IntegerString[scale]<>"_images_"<>IntegerString[i]<>".mx",
+	Parallelize@Table[evalRpcaColorAlgorithms[imgs[[i]],scale,nzRatio,noise,algoFs]
+		,{nzRatio,nzRatios(*{0.3}*)},{noise,{0,0.02,0.1}}]]
+		,{i,(*Length@imgs*)2}];,{scale,{(*128*)481}}];*)
 
-(*LLW's result without correction by gray is close to: TotalVariationFilter[gray//Image,0.2]//Magnify[#,2]&*)
-Clear[L,S];
+
+tab={"name","unknown","time"}/.Flatten[#]&/@tb[[1,1,{1,2,3,4,5,6,7,8,9,10}]];tab//TableForm
+{"name","unknown","time"}/.Flatten[#]&/@tb[[10,1,{1,2,3,4,5,6,7,8,9,10}]]//TableForm
+
+
+Table[basename="481_"<>IntegerString[i];tb=Import["/h/mxs/481/"<>basename<>".mx"];
+Table[noise={0,0.02,0.05}[[noiseIdx]];Export["/h/481_noise"<>ToString[noise]<>"/"<>basename<>".pdf",(Print@#;#)&@ListLogLinearPlot[Transpose[{nzRatios,#}]&/@Transpose@Table["unknown"/.Flatten[#]&/@
+		tb[[rate,noiseIdx,{1,2,3,4,5,6(*,7,8*)(*,9,10*)}]],{rate,11}],Joined->True
+	,PlotLegends->(*Placed[*)LineLegend[{"LLW","Laplacian","Low-rank-matrix","Low-rank-matrix+LC","Low-rank-tensor","Low-rank-tensor+LC"}
+		,LegendMarkers->Automatic](*,{0.55,0.85}]*),GridLines->Automatic,Frame->True,FrameLabel->{"labeled-pixel proportion","relative square error of unknown part"}
+	,PlotMarkers->Automatic,ClippingStyle->Automatic,PlotRange->{Automatic,{0,Automatic}}]],{noiseIdx,3}],{i,8}]
+
+
+tb=Import["/h/mxs/481_images_1.mx"];tb//Dimensions
+Parallelize@Table[Export["/tmp/noise"<>ToString[{0,0.02,0.05}[[idx]]]<>".pdf",Rasterize[TableForm@Append[MapThread[Prepend,{Transpose[tb[[;;,idx,{1,2,3,4,5,6},6,3,2,1]]]
+		,Style[#,{Bold(*,20*)}]&/@{"LLW","Laplacian","Low-rank-matrix","Low-rank-matrix+LC","Low-rank-tensor","Low-rank-tensor+LC"}}]
+	,Style[#,{Bold(*,30*)}]&/@{"","0.1%","1%","10%","30%"}],ImageSize->1000]],{idx,3}]
+(*ImageAssemble@Transpose[tb[[;;,2,{1,2,3,4,5,6},6,3,2,1]]]
+ImageAssemble@Transpose[tb[[;;,3,{1,2,3,4,5,6},6,3,2,1]]]*)
+
+
+algoFs={Hold[Function[{Gray,D,\[CapitalOmega],initL,initS,iter},RpcaColorTensorUnfoldingsWithInit[Gray,D,\[CapitalOmega],initL,initS,iter,{1}]]]
+	,Hold[Function[{Gray,D,\[CapitalOmega],initL,initS,iter},RpcaColorTensorUnfoldingsWithInit[Gray,D,\[CapitalOmega],initL,initS,iter,{2}]]]
+	,Hold[Function[{Gray,D,\[CapitalOmega],initL,initS,iter},RpcaColorTensorUnfoldingsWithInit[Gray,D,\[CapitalOmega],initL,initS,iter,{3}]]]
+	,Hold[Function[{Gray,D,\[CapitalOmega],initL,initS,iter},RpcaColorTensorUnfoldingsWithInit[Gray,D,\[CapitalOmega],initL,initS,iter,{2,3}]]]
+	,Hold[Function[{Gray,D,\[CapitalOmega],initL,initS,iter},RpcaColorTensorUnfoldingsWithInit[Gray,D,\[CapitalOmega],initL,initS,iter,{1,3}]]]
+	,Hold[Function[{Gray,D,\[CapitalOmega],initL,initS,iter},RpcaColorTensorUnfoldingsWithInit[Gray,D,\[CapitalOmega],initL,initS,iter,{1,2}]]]
+	,Hold[Function[{Gray,D,\[CapitalOmega],initL,initS,iter},RpcaColorTensorUnfoldingsWithInit[Gray,D,\[CapitalOmega],initL,initS,iter,{1,2,3}]]]
+	};
+nzRatios={0.001,0.002,0.005,0.01,0.02,0.05,0.1,0.2,0.5,0.7,0.9};(*{0.1,0.3,0.5};*)
+Table[
+tb=Table[(*Export["/h/mxs/"<>IntegerString[scale]<>"_params_"<>IntegerString[i]<>".mx",*)
+	Table[evalRpcaColorAlgorithms[imgs[[i]],scale,nzRatio,noise,algoFs]
+		,{nzRatio,nzRatios(*{0.3}*)},{noise,{0(*,0.02,0.1*)}}](*]*)
+		,{i,Length@imgs}],{scale,{(*128*)481}}];
+
+
+(*tb=Import["/h/mxs/unfoldings.mx"];*)
+Table[Export["/h/unfoldings_"<>IntegerString[i]<>".pdf",
+	ListLogLinearPlot[Thread@{nzRatios,#}&/@(*Mean@Table[*)Transpose@tb[[i,;;,1,;;,6,4,2]](*,{i,8}]*)
+	,Joined->True
+	,PlotLegends->(*Placed[*)LineLegend[{"{3}","{2}","{1}","{2,1}","{1,3}","{2,3}","{1,2,3}"}
+		,LegendMarkers->Automatic](*,{0.55,0.85}]*),GridLines->Automatic,Frame->True,FrameLabel->{"labeled-pixel proportion","relative square error of unknown part"}
+	,PlotMarkers->Automatic
+]],{i,8}]
+
+
+(*i=2;{{L[i],S[i]}=RpcaColorFourierWithInit[noisyGray,noisyRgb\[CapitalOmega],masks,0masks,0masks,100];//AbsoluteTiming
+	,Hold@RpcaColorFourierWithInit,evalColorResult[L[i],S[i]]}
+i=22;{{L[i],S[i]}=localColorConsistencyTransform[RpcaColorFourierWithInit][noisyGray,noisyRgb\[CapitalOmega],masks,0masks,0masks,100];//AbsoluteTiming
+	,Hold@localColorConsistencyTransform[RpcaColorFourierWithInit],evalColorResult[L[i],S[i]]}*)
+(*(*Post-filtering can hardly improve*)
+i=4;L[i]=correctWithGray[gray,ImageData/@ColorSeparate@TotalVariationFilter[ColorCombine[Image/@L[3]],0.03,Method->"Poisson"]];S[i]=0L[i];
+{pnorm[rgb-L[i],2]/pnorm[rgb,2],showTensor3/@{L[i],S[i]},pnorm[(rgb-L[i])(1-masks),2]/pnorm[rgb (1-masks),2]
+	,ImageAdjust@ImageDifference[rgb//showTensor3,L[i]//showTensor3]}*)
+(*Post-improving RpcaColorLevinWeissSimpleLaplaceWithInit*)
+(*i=4;{L[i],S[i]}=RpcaColorFourierWithInit[noisyGray,noisyRgb\[CapitalOmega],masks,L[3],S[3],100];//AbsoluteTiming
+{pnorm[rgb-L[i],2]/pnorm[rgb,2],showTensor3/@{L[i],S[i]},pnorm[(rgb-L[i])(1-masks),2]/pnorm[rgb (1-masks),2]
+	,ImageAdjust@ImageDifference[rgb//showTensor3,L[i]//showTensor3]}
+{Total[schattenNorm[#,1]&/@#]&/@Array[L,i],pnorm[#,1]&/@Array[S,i]}*)
+(*Post-improving RpcaColorLevinWeissSimpleLaplaceWithInit by working in LAB*)
+(*lab=ImageData/@ColorSeparate[ColorCombine[Image/@L[3]],"LAB"];(*rgb\[CapitalOmega]Lab=ImageData/@ColorSeparate[ColorCombine[Image/@noisyRgb\[CapitalOmega]],"LAB"];*)
+abFiltered=Table[First@Rpca2[lab[[i]],Map[1&,lab[[i]],{-1}],100],{i,2,3}];
+i=5;L[i]=ImageData/@ColorSeparate@ColorConvert[ColorCombine[Image/@Prepend[abFiltered,lab[[1]]],"LAB"],"RGB"];S[i]=noisyRgb\[CapitalOmega]-L[i];
+{pnorm[rgb-L[i],2]/pnorm[rgb,2],showTensor3/@{L[i],S[i]},pnorm[(rgb-L[i])(1-masks),2]/pnorm[rgb (1-masks),2]
+	,ImageAdjust@ImageDifference[rgb//showTensor3,L[i]//showTensor3]}*)
+(*{Total[schattenNorm[#,1]&/@#]&/@Array[L,i],pnorm[#,1]&/@Array[S,i]}*)
 (*(*Color info can be represented as a Complex of A+B I where A, B are from LAB*)
 L=ImageData/@ColorSeparate@ColorConvert[ColorCombine[Prepend[Image@Re@First@RpcaFourierWithInit[ImageData@#,masks[[1]],0masks[[1]],0masks[[1]],100]&/@ColorSeparate[
 	ColorCombine[Image/@(rgb masks)],"LAB"][[2;;]],First@ColorSeparate[ColorCombine[Image/@rgb],"LAB"]],"LAB"],"RGB"];S=0L;
@@ -297,39 +374,6 @@ L=ImageData/@ColorSeparate@ColorConvert[ColorCombine[Prepend[
 	inverseImageTiling[#,dim]&@Image@First@Rpca2[ImageData@imageTiling@#,ImageData@imageTiling@Image@masks[[1]],100]&/@ColorSeparate[
 		ColorCombine[Image/@(rgb masks)],"LAB"][[2;;]],First@ColorSeparate[ColorCombine[Image/@rgb],"LAB"]],"LAB"],"RGB"];S=0L;
 {pnorm[rgb-L,2]/pnorm[rgb,2],showTensor3/@{L,S},pnorm[(rgb-L)(1-masks),2]/pnorm[rgb (1-masks),2]}*)
-(*{L,S}=RpcaColorGrayWithInit[gray,rgb masks,masks,0masks,0masks,100];//AbsoluteTiming
-{pnorm[rgb-L,2]/pnorm[rgb,2],showTensor3/@{L,S},pnorm[(rgb-L)(1-masks),2]/pnorm[rgb (1-masks),2]}*)
-(*{L,S}=RpcaColor2WithInit[gray,rgb masks,masks,L,S,100];//AbsoluteTiming
-{pnorm[rgb-L,2]/pnorm[rgb,2],showTensor3/@{L,S},pnorm[(rgb-L)(1-masks),2]/pnorm[rgb (1-masks),2]}*)
-(*i=1;{L[i],S[i]}=RpcaColorFourierWithInit[noisyGray,noisyRgb\[CapitalOmega],masks,0masks,0masks,100];//AbsoluteTiming
-{pnorm[rgb-L[i],2]/pnorm[rgb,2],showTensor3/@{L[i],S[i]},pnorm[(rgb-L[i])(1-masks),2]/pnorm[rgb (1-masks),2]
-	,ImageAdjust@ImageDifference[rgb//showTensor3,L[i]//showTensor3]}*)
-i=2;{L[i],S[i]}=RpcaColorLevinWeissWithInit[noisyGray,noisyRgb\[CapitalOmega],masks,0masks,0masks,100];//AbsoluteTiming
-evalColorResult[L[i],S[i]]
-i=3;{L[i],S[i]}=RpcaColorLevinWeissSimpleLaplaceWithInit[noisyGray,noisyRgb\[CapitalOmega],masks,0masks,0masks,100];//AbsoluteTiming
-evalColorResult[L[i],S[i]]
-i=4;{L[i],S[i]}=RpcaColorShrinkTVWithInit[noisyGray,noisyRgb\[CapitalOmega],masks,0masks,0masks,100];//AbsoluteTiming
-evalColorResult[L[i],S[i]]
-(*i=5;{L[i],S[i]}=RpcaColorTensorLaplaceWithInit[noisyGray,noisyRgb\[CapitalOmega],masks,0masks,0masks,100];//AbsoluteTiming
-evalColorResult[L[i],S[i]]*)
-(*i=6;{L[i],S[i]}=RpcaColorTensorSimpleLaplaceWithInit[noisyGray,noisyRgb\[CapitalOmega],masks,0masks,0masks,100];//AbsoluteTiming
-evalColorResult[L[i],S[i]]*)
-(*(*Post-filtering can hardly improve*)
-i=4;L[i]=correctWithGray[gray,ImageData/@ColorSeparate@TotalVariationFilter[ColorCombine[Image/@L[3]],0.03,Method->"Poisson"]];S[i]=0L[i];
-{pnorm[rgb-L[i],2]/pnorm[rgb,2],showTensor3/@{L[i],S[i]},pnorm[(rgb-L[i])(1-masks),2]/pnorm[rgb (1-masks),2]
-	,ImageAdjust@ImageDifference[rgb//showTensor3,L[i]//showTensor3]}*)
-(*Post-improving RpcaColorLevinWeissSimpleLaplaceWithInit*)
-(*i=4;{L[i],S[i]}=RpcaColorFourierWithInit[noisyGray,noisyRgb\[CapitalOmega],masks,L[3],S[3],100];//AbsoluteTiming
-{pnorm[rgb-L[i],2]/pnorm[rgb,2],showTensor3/@{L[i],S[i]},pnorm[(rgb-L[i])(1-masks),2]/pnorm[rgb (1-masks),2]
-	,ImageAdjust@ImageDifference[rgb//showTensor3,L[i]//showTensor3]}
-{Total[schattenNorm[#,1]&/@#]&/@Array[L,i],pnorm[#,1]&/@Array[S,i]}*)
-(*Post-improving RpcaColorLevinWeissSimpleLaplaceWithInit by working in LAB*)
-(*lab=ImageData/@ColorSeparate[ColorCombine[Image/@L[3]],"LAB"];(*rgb\[CapitalOmega]Lab=ImageData/@ColorSeparate[ColorCombine[Image/@noisyRgb\[CapitalOmega]],"LAB"];*)
-abFiltered=Table[First@Rpca2[lab[[i]],Map[1&,lab[[i]],{-1}],100],{i,2,3}];
-i=5;L[i]=ImageData/@ColorSeparate@ColorConvert[ColorCombine[Image/@Prepend[abFiltered,lab[[1]]],"LAB"],"RGB"];S[i]=noisyRgb\[CapitalOmega]-L[i];
-{pnorm[rgb-L[i],2]/pnorm[rgb,2],showTensor3/@{L[i],S[i]},pnorm[(rgb-L[i])(1-masks),2]/pnorm[rgb (1-masks),2]
-	,ImageAdjust@ImageDifference[rgb//showTensor3,L[i]//showTensor3]}*)
-(*{Total[schattenNorm[#,1]&/@#]&/@Array[L,i],pnorm[#,1]&/@Array[S,i]}*)
 
 
 (*The manual label example seems trivial: the colorization is good once we apply correctWithGray*) 
@@ -488,3 +532,18 @@ Rpca2LabMayJuxtaposeWithInit=Function[{Luminance,Rgb,\[CapitalOmega]in,initL,ini
 	Print[Image/@Partition[L,Dimensions@Luminance]];
 	L=ImageData@ColorConvert[ColorCombine[Prepend[Image/@Partition[L,Dimensions@Luminance][[1,2]],Image@Luminance],"LAB"],"RGB"];
 	{L,Rgb-L}]];
+
+
+visualizePowerLawForImage=Function[fname,With[{img=ColorConvert[Import[fname,ImageSize->400{1,1}],"Gray"]}
+	,Append[gimg=img;visualizePowerLaw@SingularValueList@Standardize[ImageData@img,Mean, 0.1+StandardDeviation[#]&],img]]];
+visualizePowerLawForImage/@{"/h/jupiter.jpg","/h/t.jpg","/h/t2.jpg","/h/531px-PET-image.jpg"}
+
+
+n=400;lab=ColorSeparate[Import["/h/t.jpg",ImageSize->n{1,1}],"LAB"];
+ColorCombine[Prepend[ImageResize[ImageResize[#,Round[n/31]{1,1}],n{1,1}]&/@lab[[2;;]],lab[[1]]],"LAB"]
+
+
+Export["/tmp/t.jpg",Import["/h/panos/george/PANO_20140517_135751.jpg",ImageSize->{720}]]
+
+
+StringJoin@Riffle[Complement[Import["/h/panos/whitelist/prod-calibrated_pose.csv"][[;;,1]],Import["/h/panos/whitelist/prod-updated_photo_ids.csv","Lines"]],","]

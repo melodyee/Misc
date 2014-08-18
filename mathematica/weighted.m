@@ -430,43 +430,6 @@ normalized=Parallelize[(r=lieNormalize[#,"power"->3(*,"Group"->"Rotation"*)];Gra
 (*Export["/s/workspace/sld/figure/sparse_linear_3d.pdf",*)Identity[TableForm@{Graphics3D@{Blue,Point[#]}&/@mss,normalized}](*]*)
 
 
-(*Observations: special linear group is better than rotation group even if only rotation is involved. Order of transform also does not matter.*)
-extractPointCloud=Function[img,Position[Round@ImageData@Binarize@LaplacianFilter[Binarize@img,1],1]];
-ms=extractPointCloud@Rasterize[(*"\:5f20_"*)"STOP"(*"|"*),ImageSize->200];
-(*mss=Table[ms.With[{\[Theta]=RandomReal[2Pi]},{{Cos[\[Theta]],-Sin[\[Theta]]},{Sin[\[Theta]],Cos[\[Theta]]}}].With[{a=RandomReal[3{-1,1}]},{{1,a},{0,1}}],{5}];*)
-(*mss=Table[ms.With[{a=RandomReal[3{-1,1}]},{{1,a},{0,1}}].With[{\[Theta]=RandomReal[2Pi]},{{Cos[\[Theta]],-Sin[\[Theta]]},{Sin[\[Theta]],Cos[\[Theta]]}}],{5}];*)
-mss=Table[ms.MatrixExp[nilTrace@RandomReal[1,Dimensions[ms][[2]]{1,1}]],{5}];
-normalized=Parallelize[(r=lieNormalize[#,"power"->3(*,"Group"->"Rotation"*)];{r[[1]],Graphics[{Red,Point[Standardize[r[[2]]]]},Axes->True]})&/@mss];
-(*Export["/s/workspace/sld/figure/sparse_linear.pdf",*)Rasterize[TableForm@{Graphics@{Blue,Point[#]}&/@mss,normalized}](*]*)
-(*(*Sufficient but necessary for Transpose[mn].mn to be diagonal*)mn=lieNormalize[mss[[1]],"power"->3][[2]];Transpose[mn].mn*)
-
-
-(*Different sampling rate*)
-mss=Table[extractPointCloud@Rasterize[(*"\:5f20_"*)"STOP"(*"|"*),ImageSize->sz],{sz,20{1,2,3,4,6,8}}];
-normalized=Parallelize[(r=lieNormalize[#,"power"->3(*,"Group"->"Rotation"*)];Graphics[{Red,Point[Standardize[r[[2]]]]},Axes->True])&/@mss];
-(*Export["/s/workspace/sld/figure/sparse_linear.pdf",*)Rasterize[TableForm@{Graphics@{Blue,Point[#]}&/@mss,normalized}](*]*)
-
-
-(*Limited search range*)
-ms=extractPointCloud@Rasterize[(*"\:5f20_"*)"STOP"(*"|"*),ImageSize->200];
-SeedRandom[1003];mss=Table[ms.RotationMatrix[RandomReal[1]],{5}];
-Graphics[Point/@mss]
-Clear[t];
-Parallelize[Function[m,{r=NMinimize[{pnorm[m.RotationMatrix[-t],3],0<=t<=1},t,Method->"RandomSearch"];//AbsoluteTiming
-	,r[[1]],Graphics[Point[m.RotationMatrix[-t/.r[[2]]]]]}]/@mss]
-
-
-showImage@#&/@trainFeatures[[;;50]]
-Parallelize[{Graphics[{Blue,Point@#}],Graphics[{Red,Point[lieNormalize[#,"power"->3][[2]]]}]}&/@(
-	N@extractPointCloud@ImageResize[showImage@#,100{1,1},Resampling->"Nearest"]&/@trainFeatures[[;;50]])]
-
-
-(*SeedRandom[1003];*)m=RandomReal[1,{10,2}];
-Graphics@Line@#&/@{
-	fourDirectionNormalize[m],fourDirectionNormalize[m.RotationMatrix[90Degree]]
-	,fourDirectionNormalize[m.RotationMatrix[180Degree]],fourDirectionNormalize[m.RotationMatrix[270Degree]]}
-
-
 fourDirectionNormalize=Function[oms,Module[{weights},
 	(*weights=N@Table[i^2 j,{i,Dimensions[oms][[1]]},{j,Dimensions[oms][[2]]}];*)
 	oms.First[SortBy[Table[RotationMatrix[90i Degree],{i,0,3}],pnorm[Map[Max[#,0]&,Standardize[oms].#,{2}],2]&]]]];
@@ -488,6 +451,59 @@ lieNormalize[oms_List,OptionsPattern[{"power"->3,"Polarity"->"Min","Method"->"Gl
 (*mss=Table[ms.With[{\[Theta]=RandomReal[2Pi]},{{Cos[\[Theta]],-Sin[\[Theta]]},{Sin[\[Theta]],Cos[\[Theta]]}}].With[{a=RandomReal[3{-1,1}]},{{1,a},{0,1}}],{10}];
 Graphics@{Blue,Line[#]}&/@mss
 Parallelize[(r=lieNormalize[#,"power"->3];Graphics[{Red,Line[r[[2]]]},Axes->True])&/@mss]*)
+
+(*Observations: special linear group is better than rotation group even if only rotation is involved. Order of transform also does not matter.*)
+extractPointCloud=Function[img,Position[Round@ImageData@Binarize@LaplacianFilter[Binarize@img,1],1]];
+figs=Import["/h/brown_shape/99db/pngs/*.png"];selected=figs[[{1,3,8,16,30,48,60}]];
+
+Parallelize@Table[ms=extractPointCloud@selected[[i]];
+(*ms=extractPointCloud@Rasterize[(*"\:5f20_"*)"STOP"(*"|"*),ImageSize->200];*)
+(*mss=Table[ms.With[{\[Theta]=RandomReal[2Pi]},{{Cos[\[Theta]],-Sin[\[Theta]]},{Sin[\[Theta]],Cos[\[Theta]]}}].With[{a=RandomReal[3{-1,1}]},{{1,a},{0,1}}],{5}];*)
+(*mss=Table[ms.With[{a=RandomReal[3{-1,1}]},{{1,a},{0,1}}].With[{\[Theta]=RandomReal[2Pi]},{{Cos[\[Theta]],-Sin[\[Theta]]},{Sin[\[Theta]],Cos[\[Theta]]}}],{5}];*)
+mss=Table[ms.MatrixExp[nilTrace@RandomReal[1,Dimensions[ms][[2]]{1,1}]],{5}];
+pcaNormalized=Graphics@{Green,Point@PrincipalComponents[#]}&/@N@mss;
+rotationNormalized=Identity[(r=lieNormalize[#,"power"->3,"Group"->"Rotation"];
+	{(*r[[1]],*)Graphics[{Purple,Point[fourDirectionNormalize@Standardize[r[[2]]]]},Axes->True]})&/@mss];
+normalized=Identity[(r=lieNormalize[#,"power"->3(*,"Group"->"Rotation"*)];
+	{(*r[[1]],*)Graphics[{Red,Point[fourDirectionNormalize@Standardize[r[[2]]]]},Axes->True]})&/@mss];
+(*Export["/s/workspace/sld/figure/sparse_linear.pdf",*)
+g=Rasterize[TableForm@MapThread[Prepend,{{Graphics@{Blue,Point[#]}&/@mss,pcaNormalized,rotationNormalized,normalized}
+	,{"Original","PCA","Rotation","Special linear"}}],ImageSize->2000];
+Export["/h/normalizing_"<>IntegerString[i]<>".pdf",g]
+(*(*Sufficient but necessary for Transpose[mn].mn to be diagonal*)mn=lieNormalize[mss[[1]],"power"->3][[2]];Transpose[mn].mn*)
+,{i,Length@selected}]
+
+
+(*Different sampling rate*)
+SeedRandom[1003];
+Parallelize@Do[mss=Table[extractPointCloud[(*Rasterize[(*"\:5f20_"*)"STOP"(*"|"*),ImageSize->sz]*)
+		ImageResize[selected[[i]],sz]].MatrixExp[nilTrace@RandomReal[1,Dimensions[ms][[2]]{1,1}]]
+	,{sz,20{2,3,4,6,8}}];
+normalized=Identity[(r=lieNormalize[#,"power"->3(*,"Group"->"Rotation"*)];
+	Graphics[{Red,Point[fourDirectionNormalize@Standardize[r[[2]]]]},Axes->True])&/@mss];
+(*Export["/s/workspace/sld/figure/sparse_linear.pdf",*)g=Rasterize[TableForm@{Graphics@{Blue,Point[#]}&/@mss,normalized
+	,Style["#point="<>IntegerString[#],{15,Bold}]&/@(20{2,3,4,6,8})},ImageSize->2000];(*]*)
+Export["/h/sampling_rate_"<>IntegerString[i]<>".pdf",g],{i,Length@selected}]
+
+
+(*Limited search range*)
+ms=extractPointCloud@Rasterize[(*"\:5f20_"*)"STOP"(*"|"*),ImageSize->200];
+SeedRandom[1003];mss=Table[ms.RotationMatrix[RandomReal[1]],{5}];
+Graphics[Point/@mss]
+Clear[t];
+Parallelize[Function[m,{r=NMinimize[{pnorm[m.RotationMatrix[-t],3],0<=t<=1},t,Method->"RandomSearch"];//AbsoluteTiming
+	,r[[1]],Graphics[Point[m.RotationMatrix[-t/.r[[2]]]]]}]/@mss]
+
+
+showImage@#&/@trainFeatures[[;;50]]
+Parallelize[{Graphics[{Blue,Point@#}],Graphics[{Red,Point[lieNormalize[#,"power"->3][[2]]]}]}&/@(
+	N@extractPointCloud@ImageResize[showImage@#,100{1,1},Resampling->"Nearest"]&/@trainFeatures[[;;50]])]
+
+
+(*SeedRandom[1003];*)m=RandomReal[1,{10,2}];
+Graphics@Line@#&/@{
+	fourDirectionNormalize[m],fourDirectionNormalize[m.RotationMatrix[90Degree]]
+	,fourDirectionNormalize[m.RotationMatrix[180Degree]],fourDirectionNormalize[m.RotationMatrix[270Degree]]}
 
 
 Parallelize@Table[Run["cd /h/d/butterfly;/opt/local/bin/wget http://www.lems.brown.edu/~dmc/LinktoImages/Butterflies/Butterfly-a"<>IntegerString[i,10,3]<>".gif"],{i,100}]
@@ -650,3 +666,62 @@ pointSets=Table[rot=Re@MatrixExp[0.1 MatrixLog@randomSpecialOrthogonalMatrix[3]]
 Import@Export["t.png",#]&@GraphicsGrid[Transpose@Parallelize[
 	Function[pts,{Graphics@{Blue,Point@pts},Graphics@{Red,Point@Standardize@PrincipalComponents[pts]}
 		,Graphics@{Green,Point@normalizeByRotationalHomography[pts,pnorm2[#,3]&]}}]/@pointSets],Frame->All]
+
+
+SeedRandom[1003];
+mnorm=Function[m,Module[{r,a,f,ass},ass=Array[a,{3,3}];
+	Last@{r=NMinimize[pnorm[foldXUs[m,MatrixExp@skewOmega@#&/@ass,{}],1],Flatten@ass];//AbsoluteTiming,r[[1]]}
+]];
+Parallelize@Table[ms=RandomReal[1,{2,3,3,3}];Plus@@(mnorm/@ms)-mnorm[Plus@@ms],{100}]
+
+
+Clear[a,b];as=Array[a,3];bs=Array[b,3];SeedRandom[1003];m=RandomReal[1,3{1,1}];
+{r=NMinimize[pnorm[MatrixExp@skewOmega@as.m.MatrixExp@skewOmega@bs,3],Flatten@{as,bs}];//AbsoluteTiming,r[[1]]}
+MatrixExp@skewOmega[as/.r[[2]]].m.MatrixExp@skewOmega[bs/.r[[2]]]//MatrixForm
+MatrixForm/@SingularValueDecomposition@m
+
+
+(*{r=NMinimize[-Tr@Abs[Transpose@{{1,a[1],a[2]},{0,1,a[3]},{0,0,1}}.m.{{1,b[1],b[2]},{0,1,b[3]},{0,0,1}}]
+	,Flatten@{as,bs}];//AbsoluteTiming,r[[1]]}
+Transpose@{{1,a[1],a[2]},{0,1,a[3]},{0,0,1}}.m.{{1,b[1],b[2]},{0,1,b[3]},{0,0,1}}/.r[[2]]//MatrixForm*)
+
+
+SeedRandom[1003];Clear[a,f];m=RandomReal[1,3{1,1,1}];ass=Array[a,3{1,1}];
+{r=NMinimize[pnorm[foldXUs[m,MatrixExp[skewOmega[#]]&/@ass,{}],1],Flatten@ass];//AbsoluteTiming,r[[1]]}
+f[as_?(NumericQ@#[[1]]&)]:=Total[schattenNorm[#,1]&/@(m.MatrixExp@skewOmega@as)];
+{r=NMinimize[f[ass[[1]]],Flatten@ass];//AbsoluteTiming,r[[1]]}
+schattenNorm[Join@@m,1]
+
+
+n=300;SeedRandom[1003];m=RandomReal[1,{3,n,n}];
+f[as_?(NumericQ@#[[1]]&)]:=Total[schattenNorm[#,1]&/@(MatrixExp[skewOmega@as].m)];
+{r=NMinimize[f[ass[[1]]],Flatten@ass];//AbsoluteTiming,r[[1]]}
+schattenNorm[Join@@m,1]
+
+
+?RotateLeft
+
+
+m=ImageData@ColorConvert[Import["/s/t7.jpg",ImageSize->{200,200}],"Gray"];rk=30;d=15;
+#[[1,;;,;;rk]].#[[2,;;rk,;;rk]].Transpose@#[[3,;;,;;rk]]&@SingularValueDecomposition[m]//Image//ImageAdjust
+(#[[1,;;,;;rk]].#[[2,;;rk,;;rk]].Transpose@#[[3,;;,;;rk]]&@SingularValueDecomposition[
+	Join@@(With[{n=Length@#},Table[RotateLeft[#,i],{i,-d,d}]]&/@m)])[[1+d;;;;1+2d]]//Image//ImageAdjust
+
+
+
+
+
+	nzRatio=0.3;noise=0;scale=481;img=Import["/h/t2.jpg",ImageSize->{scale}];
+	dim=Round[N[scale]#/Max@#&@Reverse@ImageDimensions@img];
+	SeedRandom[1003];{gray,rgb,masks}=prepareDataRpcaColor[ColorSeparate[ImageResize[img,Reverse@dim]],dim,1-nzRatio];
+    noiseF=If[noise==0,0,RandomVariate@NormalDistribution[0,noise]]&;
+(*\[CapitalOmega]=ImageData@Erosion[Image@randomSparseTensor[dim{1,1},0.9],2];masks={\[CapitalOmega],\[CapitalOmega],\[CapitalOmega]};*)
+	noisyGray=Map[#+noiseF[]&,gray,{-1}];
+	noisyRgb\[CapitalOmega]=masks Map[#+noiseF[]&,rgb,{-1}];
+	(*Print@{pnorm[rgb-{gray,gray,gray},2]/pnorm[rgb,2],gray//Image,noisyGray//Image,rgb//showTensor3,noisyRgb\[CapitalOmega]//showTensor3};*)
+	Print[{Dimensions/@{gray,rgb,masks},nzRatio,noise}];
+
+
+mask=unfoldTensor[masks,2];
+Table[{meth,foldToTensor[Rpca2UnitaryWithInit[unfoldTensor[noisyRgb\[CapitalOmega],2],mask,0mask,0mask,100,meth][[1]],Dimensions@masks,2]//showTensor3}
+	,{meth,{"Fourier","Gray","FourierLaplace","Hadamard"}}]
