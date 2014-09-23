@@ -1,6 +1,7 @@
 (* ::Package:: *)
 
 <<"~/gdrive/mac_home/t3.m"
+(*known=Import["/h/d/train.csv"][[2;;]];unknown=Import["/h/d/test.csv"][[2;;]];Export["/h/mxs/DigitRecognizer.mx",{known,unknown}]*)
 {known,unknown}=Import@"/h/mxs/DigitRecognizer.mx";//AbsoluteTiming
 SeedRandom[1003];fullSet=Range[Length@known];trainSet=RandomSample[fullSet,Round[4/5 Length@known]];testSet=Complement[fullSet,trainSet];
 train=Developer`ToPackedArray@known[[trainSet]];test=Developer`ToPackedArray@known[[testSet]];
@@ -18,7 +19,8 @@ evalOneHotSupportVector=Function[{ws,testFeatures,testResponse},If[Dimensions[ws
 showImage=Function[v,Partition[v,28]//Image];showImage/@trainFeatures[[;;10]]
 
 
-Import["/h/DigitRecognizer/train1.csv"]
+(*Export["/tmp/t64.csv",train[[;;64,2;;]]]*)
+Export["/tmp/t64.csv",RandomReal[1,{64,28 28}]]
 
 
 mean=Mean[trainFeatures];scale=255 Norm[trainFeatures[[1]]]/Length[trainFeatures[[1]]];
