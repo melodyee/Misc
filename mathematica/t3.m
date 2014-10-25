@@ -1,6 +1,26 @@
 (* ::Package:: *)
 
 printTemporary=(#;)&;
+fourDirectionNormalize=Function[oms,Module[{weights},
+	(*weights=N@Table[i^2 j,{i,Dimensions[oms][[1]]},{j,Dimensions[oms][[2]]}];*)
+	oms.First[SortBy[Table[RotationMatrix[90i Degree],{i,0,3}],pnorm[Map[Max[#,0]&,Standardize[oms].#,{2}],2]&]]]];
+Clear[lieNormalize];
+lieNormalize[oms_List,OptionsPattern[{"power"->3,"Polarity"->"Min","Method"->"Global"(*,"Weighted"->True*),"Group"->"SpecialLinear"}]]:=
+		Module[{a,as,ms=Standardize[oms],r,global=OptionValue["Method"]==="Global",p(*,weights*),transformed},
+	as=Array[a,Dimensions[ms][[2]]{1,1}];
+	p=OptionValue["power"];(*weights=N@Table[If[OptionValue["Weighted"],i^2 j,1],{i,Dimensions[oms][[1]]},{j,Dimensions[oms][[2]]}];*)
+	transformed=Switch[Dimensions[ms][[2]],2,((*weights*)ms).Switch[OptionValue@"Group","SpecialLinear",
+		{{a[2,1],0},{0,1/a[2,1]}}.{{1,a[1,2]},{0,1}}.With[{\[Theta]=a[1,1]},{{Cos[\[Theta]],-Sin[\[Theta]]},{Sin[\[Theta]],Cos[\[Theta]]}}],
+		"Rotation",With[{\[Theta]=a[1,1]},{{Cos[\[Theta]],-Sin[\[Theta]]},{Sin[\[Theta]],Cos[\[Theta]]}}],
+		(*"Moebius",pnorm2[((*weights*)ms),p],*)
+		_,Abort[]]
+	,_,ms.MatrixExp[nilTrace@as]];
+	r=Switch[OptionValue["Polarity"],"Max",If[global,NMaximize,FindMaximum],"Min",If[global,NMinimize,FindMinimum],_,Abort[]][
+		pnorm2[transformed,p],Flatten@as];
+	{r[[1]],transformed/.r[[2]]}
+	];
+extractPointCloud=Function[img,Position[Round@ImageData@Binarize@LaplacianFilter[Binarize@img,1],1]];
+fontlist=Function[{},Sort[FE`Evaluate[FEPrivate`GetPopupList["MenuListFonts"]]]];
 qlDecomposition=Function[m,Module[{id=N@Reverse@IdentityMatrix[Length@m]},{id.#[[1]].id,id.#[[2]].id}&@QRDecomposition[id.m.id]]];
 imageToPointCloud=Function[img,Module[{m=ImageData@ImageResize[img,{100}],dispF,dim},dim=Dimensions[m][[;;2]];
 	Graphics3D[Flatten@MapIndexed[If[ListQ@#,{RGBColor@@#,Point@Append[#2/dim,Mean@#]},{GrayLevel@#,Point@Append[#2/dim,#]}]&,m,{2}]]]];
@@ -126,9 +146,9 @@ traceNormOrientPhoto=Function[imgIn,Module[{doMasking=True,mask,n=Min[50,Min@Ima
 	gray=If[doMasking,ImageMultiply[mask,#]&,Identity]@ColorConvert[img,"Gray"];
 	f[t_?NumericQ]:=schattenNorm[ImageData@ImageRotate[gray,t],1];
 	r=NMinimize[f[t],t];{r,ImageRotate[gray,t/.r[[2]]],ImageRotate[imgIn,t/.r[[2]]]}]];
-exampleStereoPairs=Map[Import[#,ImageSize->{400}]&,{{"/h/t11.jpg","/h/t12.jpg"},{"/h/t14.jpg","/h/t13.jpg"},{"/h/t13.jpg","/h/t14.jpg"}
+(*exampleStereoPairs=Map[Import[#,ImageSize->{400}]&,{{"/h/t11.jpg","/h/t12.jpg"},{"/h/t14.jpg","/h/t13.jpg"},{"/h/t13.jpg","/h/t14.jpg"}
 	,{"/h/t2.jpg","/h/t4.jpg"},{"/h/t4.jpg","/h/t7.jpg"},{"/h/t7.jpg","/h/t8.jpg"},{"/h/t9.jpg","/h/t10.jpg"},{"/h/forward1.jpg","/h/forward2.jpg"}
-	,{"/h/slide1.jpg","/h/slide2.jpg"},{"/h/t15.jpg","/h/t16.jpg"}},{2}];
+	,{"/h/slide1.jpg","/h/slide2.jpg"},{"/h/t15.jpg","/h/t16.jpg"}},{2}];*)
 
 breakARGB={BitAnd[BitShiftRight[#,24],255],BitAnd[BitShiftRight[#,16],255],BitAnd[BitShiftRight[#,8],255],BitAnd[#,255]}/255&;
 skew=Function[m,(m-m\[Transpose])/2];

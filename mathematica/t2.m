@@ -1467,8 +1467,9 @@ SeedRandom[1004];m=(*hermitian@*)RandomReal[0.8,2{1,1}];
 {txus2=heuristicTruncatedSUD[m,1.5,2{1,1,1}];//AbsoluteTiming,MatrixForm/@Abs@txus2}
 {txus3=heuristicTruncatedSUD[m,1.5,{2,1,2}];//AbsoluteTiming,MatrixForm/@Abs@txus3}*)
 
-m={{{1,0},{0,1}},{{0,1},{1,1}}};(*Can be simplified*)
-m={{{1,0},{0,1}},{{0,1},{-1,1}}};(*Leads to same shape, then lowest storng orthogonal rank tensor decomposition not unique.*)
+m={{{{1,0},{0,1}},{{0,0},{0,0}}},{{{0,0},{0,0}},{{1,0},{0,1}}}}
+(*m={{{1,0},{0,1}},{{0,1},{1,1}}};(*Can be simplified*)*)
+(*m={{{1,0},{0,1}},{{0,1},{-1,1}}};(*Leads to same shape, then lowest storng orthogonal rank tensor decomposition not unique.*)*)
 (*m={{{1,1},{1,0}},{{1,0},{0,0}}};
 m={{{0,1},{1,0}},{{1,0},{0,0}}};
 m={{{0,1},{1,0}},{{0,0},{0,0}}};
@@ -1479,12 +1480,15 @@ m={{1,2},{3,4}};
 (*Kolda-OTD-draft-3*)m=With[{a={1,0},b={0,1},c={1,1}/Sqrt[2]},TensorProduct@@{a,a,a}+TensorProduct@@{a,b,c}+TensorProduct@@{a,c,b}];*)
 (*(*Incorrect Kolda-OTD-draft-4*)m=With[{a={1,0},b={0,1}},3TensorProduct@@{a,b,b}+2TensorProduct@@{b,b,b}+TensorProduct@@{a,a,b}];*)
 (*Non-uniqueness of storng orthogonal decomposition*)
-(*(*Kolda-OTD-3.3*)m=With[{a={1,0},b={0,1}},3TensorProduct@@{a,b,b}+2TensorProduct@@{b,b,b}+TensorProduct@@{a,a,a}];*)
+(*(*Kolda-OTD-3.3*)m=With[{a={1,0},b={0,1}},3TensorProduct@@{a,b,b}+2TensorProduct@@{b,b,b}+TensorProduct@@{a,a,a}];{s1=Sqrt[3^2+2.^2];s1//FullForm,s2=3/s1;s2//FullForm,s3=2/s1;s3//FullForm}*)
 (*(*Kolda-OTD-draft-8*)vs=IdentityMatrix[4];m=N@Total@MapThread[Times,{{1,0.75,0.7,0.7,0.65,0.65},
 	TensorProduct@@{vs[[#[[1]]]],vs[[#[[2]]]],vs[[#[[3]]]]}&/@{{1,1,1},{2,2,2},{1,3,4},{1,4,3},{2,3,4},{2,4,3}}},1];*)
 {xus=heuristicSUD[m,1];//AbsoluteTiming,MatrixForm/@Abs@xus}
+(*pnorm[foldXUs[xus[[1]],xus[[2]],{}]-m,2]//ScientificForm//TeXForm//Print*)
 (*{xus2=heuristicSUD[m,1.5];//AbsoluteTiming,MatrixForm/@Abs@xus2}*)
-(*{xsls=heuristicSSLD[m,1.5];//AbsoluteTiming,MatrixForm/@Abs@xsls}*)
+{xsls=heuristicSSLD[m,1.5];//AbsoluteTiming,MatrixForm/@Abs@xsls}
+List/@vec@xsls[[1]]//ScientificForm//TeXForm//Print
+(*pnorm[foldXUs[xsls[[1]],xsls[[2]],{}]-m,2]//ScientificForm//TeXForm//Print*)
 
 (*SeedRandom[1006];m=RandomReal[{-1,1},{2,2,2}];
 m={{{0,1},{1,0}},{{1,0},{0,0}}};

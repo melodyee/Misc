@@ -420,7 +420,7 @@ Graphics@Line[ms.({{s,0},{0,1/s}}/.r[[2]])]
 SeedRandom[1003];ms=RandomSample[ExampleData[{"Geometry3D","StanfordBunny"},"VertexData"],8000];ListSurfacePlot3D[ms,MaxPlotPoints->50]
 mss=Table[ms.MatrixExp[nilTrace@RandomReal[0.3{-1,1},Dimensions[ms][[2]]{1,1}]],{5}];
 normalized=Parallelize[(r=lieNormalize[#,"power"->3(*,"Group"->"Rotation"*)];ListSurfacePlot3D[Standardize[r[[2]]],MaxPlotPoints->50])&/@mss];
-bunnies=\.08{ListSurfacePlot3D[#,MaxPlotPoints->50]&/@mss,normalized};bunnies//TableForm
+bunnies={ListSurfacePlot3D[#,MaxPlotPoints->50]&/@mss,normalized};bunnies//TableForm
 (*Export["/h/d/bunnies.pdf",Rasterize[TableForm@bunnies,ImageSize->1000]]*)
 
 
@@ -430,37 +430,20 @@ normalized=Parallelize[(r=lieNormalize[#,"power"->3(*,"Group"->"Rotation"*)];Gra
 (*Export["/s/workspace/sld/figure/sparse_linear_3d.pdf",*)Identity[TableForm@{Graphics3D@{Blue,Point[#]}&/@mss,normalized}](*]*)
 
 
-fourDirectionNormalize=Function[oms,Module[{weights},
-	(*weights=N@Table[i^2 j,{i,Dimensions[oms][[1]]},{j,Dimensions[oms][[2]]}];*)
-	oms.First[SortBy[Table[RotationMatrix[90i Degree],{i,0,3}],pnorm[Map[Max[#,0]&,Standardize[oms].#,{2}],2]&]]]];
-Clear[lieNormalize];
-lieNormalize[oms_List,OptionsPattern[{"power"->3,"Polarity"->"Min","Method"->"Global"(*,"Weighted"->True*),"Group"->"SpecialLinear"}]]:=
-		Module[{a,as,ms=Standardize[oms],r,global=OptionValue["Method"]==="Global",p(*,weights*),transformed},
-	as=Array[a,Dimensions[ms][[2]]{1,1}];
-	p=OptionValue["power"];(*weights=N@Table[If[OptionValue["Weighted"],i^2 j,1],{i,Dimensions[oms][[1]]},{j,Dimensions[oms][[2]]}];*)
-	transformed=Switch[Dimensions[ms][[2]],2,((*weights*)ms).Switch[OptionValue@"Group","SpecialLinear",
-		{{a[2,1],0},{0,1/a[2,1]}}.{{1,a[1,2]},{0,1}}.With[{\[Theta]=a[1,1]},{{Cos[\[Theta]],-Sin[\[Theta]]},{Sin[\[Theta]],Cos[\[Theta]]}}],
-		"Rotation",With[{\[Theta]=a[1,1]},{{Cos[\[Theta]],-Sin[\[Theta]]},{Sin[\[Theta]],Cos[\[Theta]]}}],
-		(*"Moebius",pnorm2[((*weights*)ms),p],*)
-		_,Abort[]]
-	,_,ms.MatrixExp[nilTrace@as]];
-	r=Switch[OptionValue["Polarity"],"Max",If[global,NMaximize,FindMaximum],"Min",If[global,NMinimize,FindMinimum],_,Abort[]][
-		pnorm2[transformed,p],Flatten@as];
-	{r[[1]],transformed/.r[[2]]}
-	];
-(*mss=Table[ms.With[{\[Theta]=RandomReal[2Pi]},{{Cos[\[Theta]],-Sin[\[Theta]]},{Sin[\[Theta]],Cos[\[Theta]]}}].With[{a=RandomReal[3{-1,1}]},{{1,a},{0,1}}],{10}];
-Graphics@{Blue,Line[#]}&/@mss
-Parallelize[(r=lieNormalize[#,"power"->3];Graphics[{Red,Line[r[[2]]]},Axes->True])&/@mss]*)
+ms=extractPointCloud@Rasterize[(*"\:5f20_"*)"STOP"(*"|"*),ImageSize->200];SeedRandom[1003];
+mss=Table[ms.MatrixExp[nilTrace@RandomReal[1.{-1,1},Dimensions[ms][[2]]{1,1}]].randomOrthogonalMatrix[2],{5}];
+normalized=Parallelize[(r=lieNormalize[#,"power"->3(*,"Group"->"Rotation"*)];Graphics[{Red,Point[fourDirectionNormalize@Standardize[r[[2]]]]},Axes->True])&/@mss];
+(*Export["/s/workspace/sld/figure/sparse_linear_3d.pdf",*)Identity[TableForm@{Graphics@{Blue,Point[#]}&/@mss,normalized}](*]*)
+
 
 (*Observations: special linear group is better than rotation group even if only rotation is involved. Order of transform also does not matter.*)
-extractPointCloud=Function[img,Position[Round@ImageData@Binarize@LaplacianFilter[Binarize@img,1],1]];
 figs=Import["/h/brown_shape/99db/pngs/*.png"];selected=figs[[{1,3,8,16,30,48,60}]];
-
-Parallelize@Table[ms=extractPointCloud@selected[[i]];
+SeedRandom[1003];
+Table[ms=extractPointCloud@selected[[i]];
 (*ms=extractPointCloud@Rasterize[(*"\:5f20_"*)"STOP"(*"|"*),ImageSize->200];*)
 (*mss=Table[ms.With[{\[Theta]=RandomReal[2Pi]},{{Cos[\[Theta]],-Sin[\[Theta]]},{Sin[\[Theta]],Cos[\[Theta]]}}].With[{a=RandomReal[3{-1,1}]},{{1,a},{0,1}}],{5}];*)
 (*mss=Table[ms.With[{a=RandomReal[3{-1,1}]},{{1,a},{0,1}}].With[{\[Theta]=RandomReal[2Pi]},{{Cos[\[Theta]],-Sin[\[Theta]]},{Sin[\[Theta]],Cos[\[Theta]]}}],{5}];*)
-mss=Table[ms.MatrixExp[nilTrace@RandomReal[1,Dimensions[ms][[2]]{1,1}]],{5}];
+mss=Table[ms.MatrixExp[nilTrace@RandomReal[{-1,1},Dimensions[ms][[2]]{1,1}]],{5}];
 pcaNormalized=Graphics@{Green,Point@PrincipalComponents[#]}&/@N@mss;
 rotationNormalized=Identity[(r=lieNormalize[#,"power"->3,"Group"->"Rotation"];
 	{(*r[[1]],*)Graphics[{Purple,Point[fourDirectionNormalize@Standardize[r[[2]]]]},Axes->True]})&/@mss];
@@ -468,21 +451,28 @@ normalized=Identity[(r=lieNormalize[#,"power"->3(*,"Group"->"Rotation"*)];
 	{(*r[[1]],*)Graphics[{Red,Point[fourDirectionNormalize@Standardize[r[[2]]]]},Axes->True]})&/@mss];
 (*Export["/s/workspace/sld/figure/sparse_linear.pdf",*)
 g=Rasterize[TableForm@MapThread[Prepend,{{Graphics@{Blue,Point[#]}&/@mss,pcaNormalized,rotationNormalized,normalized}
-	,{"Original","PCA","Rotation","Special linear"}}],ImageSize->2000];
+	,Style[#,{17,Bold}]&/@{"Distorted","PCA","GOO_SO","GOO_SL"}}],ImageSize->2000];
 Export["/h/normalizing_"<>IntegerString[i]<>".pdf",g]
 (*(*Sufficient but necessary for Transpose[mn].mn to be diagonal*)mn=lieNormalize[mss[[1]],"power"->3][[2]];Transpose[mn].mn*)
-,{i,Length@selected}]
+,{i,{1,5,6}}]
+
+
+StringJoin@Table["0",{5-Length@IntegerString@#}]<>IntegerString[#]&[5]
+"http://venge.net/graydon/talks/mkc/html/mgp00049.jpg"
 
 
 (*Different sampling rate*)
 SeedRandom[1003];
-Parallelize@Do[mss=Table[extractPointCloud[(*Rasterize[(*"\:5f20_"*)"STOP"(*"|"*),ImageSize->sz]*)
+(*Parallelize@Do[mss=Table[extractPointCloud[(*Rasterize[(*"\:5f20_"*)"STOP"(*"|"*),ImageSize->sz]*)
 		ImageResize[selected[[i]],sz]].MatrixExp[nilTrace@RandomReal[1,Dimensions[ms][[2]]{1,1}]]
-	,{sz,20{2,3,4,6,8}}];
+	,{sz,20{2,3,4,6,8}}];*)
+Parallelize@Do[mss=Table[RandomSample[extractPointCloud[(*Rasterize[(*"\:5f20_"*)"STOP"(*"|"*),ImageSize->sz]*)
+		selected[[i]]],sz].MatrixExp[nilTrace@RandomReal[{-1,1},Dimensions[ms][[2]]{1,1}]]
+	,{sz,20{3,4,6,8,10,12}}];
 normalized=Identity[(r=lieNormalize[#,"power"->3(*,"Group"->"Rotation"*)];
 	Graphics[{Red,Point[fourDirectionNormalize@Standardize[r[[2]]]]},Axes->True])&/@mss];
-(*Export["/s/workspace/sld/figure/sparse_linear.pdf",*)g=Rasterize[TableForm@{Graphics@{Blue,Point[#]}&/@mss,normalized
-	,Style["#point="<>IntegerString[#],{15,Bold}]&/@(20{2,3,4,6,8})},ImageSize->2000];(*]*)
+(*Export["/s/workspace/sld/figure/sparse_linear.pdf",*)g=Rasterize[TableForm@MapThread[Prepend,{{Graphics@{Blue,Point[#]}&/@mss,normalized
+	,Style["#point="<>IntegerString[#],{17,Bold}]&/@(20{3,4,6,8,10,12})},Style[#,{17,Bold}]&/@{"Distorted","GOO_SL",""}}],ImageSize->2000];(*]*)
 Export["/h/sampling_rate_"<>IntegerString[i]<>".pdf",g],{i,Length@selected}]
 
 
@@ -584,17 +574,21 @@ MatrixExp@nilTrace[as[[1]]+as[[2]]I/.r[[2]]]//TeXForm*)
 (*MatrixForm@With[{P=MatrixExp@nilTrace[as/.r[[2]]]},Inverse[P].m.P]
 evd[[2]]//TeXForm*)
 
-(*MatrixForm/@QRDecomposition@m
-TeXForm/@QRDecomposition@m
+(*qdr={Transpose[#[[1]]],DiagonalMatrix@Diagonal@#[[2]],Inverse[DiagonalMatrix@Diagonal@#[[2]]].#[[2]]}&@QRDecomposition@m;
+MatrixForm/@qdr
+TeXForm/@qdr
 Clear[u,v];us=Array[u,3];vs=Array[v,3];
 {r=NMinimize[pnorm[MatrixExp[skewOmega[-us]].m.Inverse@{{1,v[1],v[2]},{0,1,v[3]},{0,0,1}},1],Flatten@{us,vs}];//AbsoluteTiming,r[[1]]}
 uvs={MatrixExp[skewOmega[us/.r[[2]]]],{{1,v[1],v[2]},{0,1,v[3]},{0,0,1}}/.r[[2]]};TeXForm/@uvs
 core=Transpose[uvs[[1]]].m.Inverse[uvs[[2]]];core//MatrixForm
-core//ScientificForm//TeXForm*)
+core//ScientificForm//TeXForm
+MatrixForm/@{m,qdr[[1]].qdr[[2]].qdr[[3]],uvs[[1]].core.uvs[[2]]}
+Print[Norm[uvs[[1]].core.uvs[[2]]-m,"Frobenius"]//ScientificForm//TeXForm]
+Print[Norm[uvs[[2]]-qdr[[3]],"Frobenius"]//TeXForm]*)
 
-(*(*{MatrixForm/@lduDecomposition@m,pnorm[lduDecomposition[m][[2]],1]}*)
-(*(*Cholesky*)m=Transpose[m].m;chol=CholeskyDecomposition@m;Print[chol//TeXForm];chol//MatrixForm*)
-TeXForm@ScientificForm@#&/@luNoPivotDecompomposition@m
+(*{MatrixForm/@lduDecomposition@m,pnorm[lduDecomposition[m][[2]],1]}*)
+(*Cholesky*)m=Transpose[m].m;chol=CholeskyDecomposition@m;Print[chol//TeXForm];Print[chol//MatrixForm];Print[TeXForm@ConjugateTranspose@chol];
+(*TeXForm@ScientificForm@#&/@luNoPivotDecompomposition@m
 Clear[u,v];us=Array[u,3];vs=Array[v,3];
 (*{r=NMinimize[pnorm[Inverse@{{1,u[1],u[2]},{0,1,u[3]},{0,0,1}}.m.Inverse@{{1,v[1],v[2]},{0,1,v[3]},{0,0,1}},1],Flatten@{us,vs}];//AbsoluteTiming,r[[1]]}
 uvs={{{1,u[1],u[2]},{0,1,u[3]},{0,0,1}}/.r[[2]],{{1,v[1],v[2]},{0,1,v[3]},{0,0,1}}/.r[[2]]};TeXForm/@uvs*)
@@ -606,15 +600,16 @@ core=(*Inverse[uvs[[1]]].*)Inverse[uvs[[2]]].m;core//MatrixForm
 core//ScientificForm//TeXForm
 Print[uvs[[2]].DiagonalMatrix@Power[Diagonal@core,1/2]//TeXForm]*)
 
-(*Abs[Power[Det[m],1/n]]n
+(*m=SvdApprox[m,2]+10^-12 IdentityMatrix[Length@m]
+Abs[Power[Det[m],1/n]]n
 Abs[Power[Det[m],1/n]]IdentityMatrix[3]//TeXForm
 Clear[u,v];us=Array[u,n{1,1}];vs=Array[v,n{1,1}];
-{r=NMinimize[pnorm[MatrixExp[-nilTrace@us].m.MatrixExp[-nilTrace@vs],1],Flatten@{us,vs}];//AbsoluteTiming,r[[1]]}
+{r=NMinimize[pnorm[MatrixExp[-nilTrace@us].m.MatrixExp[-nilTrace@vs],1],Flatten@{us,vs},Method->"NelderMead"];//AbsoluteTiming,r[[1]]}
 uvs={MatrixExp[nilTrace[us/.r[[2]]]],MatrixExp[nilTrace[vs/.r[[2]]]]};TeXForm/@uvs
 core=Inverse[uvs[[1]]].m.Inverse[uvs[[2]]];core//MatrixForm
 core//ScientificForm//TeXForm*)
 
-schur=SchurDecomposition[m,RealBlockDiagonalForm->False]
+(*schur=SchurDecomposition[m,RealBlockDiagonalForm->False]
 MatrixForm/@schur
 Print[Re[schur[[1]]]//ScientificForm//TeXForm]
 Print[Im[schur[[1]]]//ScientificForm//TeXForm]
@@ -627,7 +622,7 @@ Print[MatrixExp@skewOmega[(us+I vs)/.r[[2]]]//Re//TeXForm]
 Print[MatrixExp@skewOmega[(us+I vs)/.r[[2]]]//Im//TeXForm]
 core=Transpose[MatrixExp@skewOmega@((us+I vs)/.r[[2]])].m.MatrixExp@skewOmega@((us+I vs)/.r[[2]]);core//MatrixForm
 Print[core//Re//ScientificForm//TeXForm]
-Print[core//Im//ScientificForm//TeXForm]
+Print[core//Im//ScientificForm//TeXForm]*)
 
 
 (*polygonArea=Function[polygon,0.5Abs@Total[Det@#&/@Partition[polygon,2,1,{1,1}]]];*)

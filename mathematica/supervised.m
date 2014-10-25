@@ -19,6 +19,11 @@ evalOneHotSupportVector=Function[{ws,testFeatures,testResponse},If[Dimensions[ws
 showImage=Function[v,Partition[v,28]//Image];showImage/@trainFeatures[[;;10]]
 
 
+showImage/@trainFeatures[[11;;30]]
+(*Export["/h/6.jpg",showImage@trainFeatures[[2]](*,ColorSpace->"Grayscale"*)]*)
+Export["/h/3.jpg",showImage@trainFeatures[[20]](*,ColorSpace->"Grayscale"*)]
+
+
 (*Export["/tmp/t64.csv",train[[;;64,2;;]]]*)
 Export["/tmp/t64.csv",RandomReal[1,{64,28 28}]]
 
@@ -572,3 +577,57 @@ ImageAdd[smoothed,LaplacianFilter[img,1]]
 filtered=GaussianFilter[img,5]
 (Print@#;Print@ImageDeconvolve[filtered,GaussianMatrix[5],Method->#])&/@{"DampedLS","Tikhonov","TSVD","Wiener","Hybrid","SteepestDescent","RichardsonLucy"}
 ImageDeconvolve[#,(*GaussianMatrix[5]*)BoxMatrix[3]/49,Method->"TotalVariation"]&@filtered
+
+
+(*vocab*)
+vocab=First/@Import["/mnt/202/d/word2vec-read-only/vocab2.csv",CharacterEncoding -> "Unicode"];vocab
+
+
+SeedRandom[1003];X=Standardize[trainFeatures,Mean,1&];svd=SingularValueDecomposition[X,3];V=svd[[3]];
+indices=Range@800(*Length@trainFeatures*);
+projected=100Standardize[trainFeatures[[indices]].V];
+
+
+
+SeedRandom[1003];X=Standardize[trainFeatures,Mean,1&];svd=SingularValueDecomposition[X,5];V=svd[[3]];
+indices=Range@800(*Length@trainFeatures*);
+projected=100Standardize[trainFeatures[[indices]].V];
+minmax={Min@#,Max@#}&/@Transpose[projected[[;;,3;;5]]];
+Graphics[MapThread[Inset[Style[#,RGBColor@@MapThread[(#-#2[[1]])/(#2[[2]]-#2[[1]])&,{#2[[3;;5]],minmax},1],FontSize->30],#2[[;;2]],{0,0},100]&,{vocab[[indices]],projected}],ImageSize->1500]
+
+
+(*PCA visualization of data*)
+<<"~/gdrive/mac_home/t3.m"
+Clear[displayPointCloudWithLabels];
+displayPointCloudWithLabels[pts_List,labels_]:=Module[{minmax={Min@#,Max@#}&@pts[[;;,3]],tpts},tpts=Transpose[pts[[;;,;;3]]];
+	Graphics[MapThread[Inset[Style[#,Hue[#3],FontSize->30],#2,{0,0},100]&,{labels,Developer`ToPackedArray@Transpose[tpts[[;;2]]],0.7((tpts[[3]]-minmax[[1]])/(minmax[[2]]-minmax[[1]]))}],ImageSize->1000]]
+(*displayPointCloudWithLabels[pts_List,labels_]:=Module[{minmax={Min@#,Max@#}&@pts[[;;,3]]},
+	Graphics[MapThread[Inset[Style[#,Hue[0.7 (#2[[3]]-minmax[[1]])/(minmax[[2]]-minmax[[1]])],FontSize->30],#2[[;;2]],{0,0},100]&,{labels,pts}],ImageSize->1500]];*)
+
+trainFeatures=Developer`ToPackedArray@Import["/mnt/202/d/word2vec-read-only/matrix.csv"];
+vocab=First/@Import["/mnt/202/d/word2vec-read-only/vocab2.csv",CharacterEncoding -> "Unicode"];
+
+SeedRandom[1004];X=Standardize[trainFeatures,Mean,1&];svd=SingularValueDecomposition[X,5];V=svd[[3]];
+projected=100Standardize[trainFeatures.V];
+(*displayPointCloudWithLabels[projected[[indices]],vocab[[indices]]]*)
+
+
+indices=Range@200(*Length@trainFeatures*);
+{pts,labels}={Developer`ToPackedArray[projected[[indices]]],vocab[[indices]]};
+Dynamic@(s=StringReplace[#,{"["->"{","]"->"}",":"->","}]&@Import["http://192.168.2.166:1337/"];idqs=Append[#,Sqrt[1-Total[#[[2;;]]^2]]]&@ToExpression@#&/@Partition[Flatten@ToExpression@s,4];
+q=SortBy[idqs,First][[1,2;;]];(*Refresh[*)displayPointCloudWithLabels[rotateByQuaternion[#,q]&/@pts[[;;,;;3]],labels](*,UpdateInterval->1]*))
+
+
+(*rotateByQuaternion[#,q]&/@projected[[;;,;;3]]*)
+
+
+Export["/h/doc/from_area_37_to_area_40/pca.jpg",Graphics[MapThread[Inset[Style[#,Hue[0.7 (#2[[3]]-minmax[[1]])/(minmax[[2]]-minmax[[1]])],FontSize->30],#2[[;;2]],{0,0},100]&,{vocab[[indices]],projected}],ImageSize->1500]]
+
+
+Graphics[MapThread[Inset[Style[#,FontSize->20],#2,{0,0},100]&,{vocab[[indices]],100Standardize[trainFeatures[[indices]].#]}],ImageSize->1500]&@
+	V(*,V.DiagonalMatrix@Abs@Standardize@Diagonal@Transpose[svd[[2]]]*)
+
+
+With[{indices=Position[vocab,#][[1,1]]&/@{"\:4e2d\:56fd","\:5317\:4eac","\:82f1\:56fd","\:4f26\:6566","\:6cd5\:56fd","\:5df4\:9ece","\:5fb7\:56fd","\:67cf\:6797","\:65e5\:672c","\:4e1c\:4eac","\:7f8e\:56fd","\:534e\:76db\:987f"}},
+minmax={Min@#,Max@#}&@projected[[indices,3]];
+Graphics[MapThread[Inset[Style[#,Hue[0.7 (#2[[3]]-minmax[[1]])/(minmax[[2]]-minmax[[1]])],FontSize->30],#2[[;;2]],{0,0},100]&,{vocab[[indices]],projected[[indices]]}],ImageSize->1500]]
