@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import multiprocessing
 import cv2
 import time
