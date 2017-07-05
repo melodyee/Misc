@@ -31,5 +31,9 @@ def f():
 
 if __name__ == '__main__':
     t = Timer(1, f)
-    t.run()
-    print('Not printed')
+    t.start()
+    print('Here')
+
+    # If using 'run', below will not be printed.
+    # t.run()
+    # print('Not printed.')
