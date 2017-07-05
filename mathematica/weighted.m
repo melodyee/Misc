@@ -4,6 +4,53 @@
 showImage=Image[#,ImageSize->{400}]&;
 
 
+normF=Function[img2,{Total@Flatten@Abs[ImageData@LaplacianFilter[img2,1]],Total@Flatten@Abs@Fourier@ImageData@img2,schattenNorm[ImageData@img2,1]}[[1]]];
+ListLinePlot[
+	Table[img2=If[doMasking,ImageMultiply[mask,#]&,Identity]@ImageRotate[gray,t];{t,
+		normF[img2]},{t,0,Pi,0.02}]
+	,PlotRange->All,AxesLabel->{"angle","nuclear norm"}]
+
+
+n=100;img=Binarize@ColorNegate@ImageResize[ImagePad[Rasterize[Style["a",n]],n/2{{1,1},{1,1}},Padding->1],n{1,1}];gray=ColorConvert[img,"Gray"];doMasking=True;
+mask=ColorConvert[ImageResize[Image@Graphics[{EdgeForm[White],FaceForm[White],Disk[n/2{1,1},n/2]},Background->Black],n{1,1}],"Gray"];
+Manipulate[img2=If[doMasking,ImageMultiply[mask,#]&,Identity]@ImageRotate[gray,t];
+Labeled[img2,"nuclear norm="<>ToString[schattenNorm[ImageData@img2,1]]],{t,0,Pi}]
+vals=Table[img2=If[doMasking,ImageMultiply[mask,#]&,Identity]@ImageRotate[gray,t];{t,schattenNorm[ImageData@img2,1]},{t,0,Pi,0.02}];
+Import@Export["t.png",#]&@ListLinePlot[
+	vals
+	,AxesLabel->{"angle","nuclear norm"}]
+Table[t,{t,0,Pi,0.02}][[Ordering[vals[[;;,2]],1][[1]]]]
+
+
+normalizeByRotationalHomography=Function[{pts,fun},Module[{a,as,h,f,r},Clear[a];as=Array[a,3{1,1}];
+	h[as_]:=With[{homog=matrixExpSpecialOrthogonal@Clip[as,0.03{-1,1}]},transformByHomography[#,homog]&/@pts];
+	f[as_?(NumberQ@#[[1,1]]&)]:=fun[h[as]];
+	r=NMinimize[f[as],Flatten@as];h[as/.r[[2]]]]];
+SeedRandom[1005];
+Transpose@Parallelize@Table[m=SparseArray[1-(Rasterize[i//Magnify[#,3]&]//Binarize//ImageData)];h=Re@MatrixExp[0.03MatrixLog@randomSpecialOrthogonalMatrix[3]];
+pts0=Standardize[m["NonzeroPositions"],Mean,1&];pts=transformByHomography[#,h]&/@pts0;
+(*Graphics[{Blue,Point@pts,Red,Point@Standardize@PrincipalComponents@pts,Green,Point@normalizeByRotationalHomography[pts,pnorm[#,3]&]}]*)
+{Graphics[{Blue,Point@pts}],Graphics[{Red,Point@Standardize@PrincipalComponents@pts}]
+	,Graphics[{Green,Point@normalizeByRotationalHomography[pts,pnorm[#,3]&]}]},{5},{i,{"\:5929\:5730","\:4e0b","\:4e8b"}}]
+
+
+
+(*Order is important in normalization*)
+MatrixForm/@QRDecomposition[MatrixExp[strictUpperTriangle[RandomReal[1,2{1,1}]]].randomOrthogonalMatrix[2]]
+
+
+(*We can learn the Lie group from examples*)
+SeedRandom[1003];mat=NullSpace@Table[m=RandomReal[1,3{1,1}];mm=m-Transpose[m](*m-DiagonalMatrix[Diagonal[m]]*);vec@mm,{100}];mat//Chop//MatrixForm
+
+bases=unVec[#,3{1,1}]&/@NullSpace@mat;MatrixForm/@bases
+nm=Total[bases RandomReal[1,Length@bases]];nm//MatrixForm
+Tr[nm]
+nm+Transpose[nm]//Chop
+
+
+
+
+
 (*Change under different Missing Ratio*)
 m=imageFs[[1]][300];Table[ImageAdjust@Image[m randomSparseTensor[Dimensions@m,nnzRatio]],{nnzRatio,{0.01,0.05,0.1,0.2,0.5,0.9,0.95}}]
 ListLogLogPlot[Table[SingularValueList[m randomSparseTensor[Dimensions@m,nnzRatio]],{nnzRatio,{0.01,0.05,0.1,0.2,0.5,0.9,0.95}}]
@@ -703,9 +750,6 @@ m=ImageData@ColorConvert[Import["/s/t7.jpg",ImageSize->{200,200}],"Gray"];rk=30;
 	Join@@(With[{n=Length@#},Table[RotateLeft[#,i],{i,-d,d}]]&/@m)])[[1+d;;;;1+2d]]//Image//ImageAdjust
 
 
-
-
-
 	nzRatio=0.3;noise=0;scale=481;img=Import["/h/t2.jpg",ImageSize->{scale}];
 	dim=Round[N[scale]#/Max@#&@Reverse@ImageDimensions@img];
 	SeedRandom[1003];{gray,rgb,masks}=prepareDataRpcaColor[ColorSeparate[ImageResize[img,Reverse@dim]],dim,1-nzRatio];
@@ -720,3 +764,12 @@ m=ImageData@ColorConvert[Import["/s/t7.jpg",ImageSize->{200,200}],"Gray"];rk=30;
 mask=unfoldTensor[masks,2];
 Table[{meth,foldToTensor[Rpca2UnitaryWithInit[unfoldTensor[noisyRgb\[CapitalOmega],2],mask,0mask,0mask,100,meth][[1]],Dimensions@masks,2]//showTensor3}
 	,{meth,{"Fourier","Gray","FourierLaplace","Hadamard"}}]
+
+
+pts0={#[[2]],-#[[1]]}&/@Position[ImageData@ColorNegate@Binarize@Rasterize[Style["STOP",FontFamily->"Times",FontSize->40]],1,{2}];
+Parallelize@Table[rotM=RotationMatrix[RandomReal[{-1,1}Pi]];pts=pts0.rotM;
+r=lieNormalize[pts,(*"Group"->"Rotation",*)"Method"->"Local","power"->1];
+{Graphics@Point@pts,Graphics@Point@r[[2]]},{20}]
+
+
+

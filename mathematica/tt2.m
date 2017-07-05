@@ -5,6 +5,9 @@ $HistoryLength=1;
 showTensor3=Function[m,ImageResize[ColorCombine[Image/@m],400{1,1}]];
 
 
+
+
+
 gray2=ImageData@ColorConvert[Import@"~/m/levin_weiss_code/example.bmp","Grayscale"];
 markedRgb=Image[Transpose[Prepend[ImageData/@(ColorSeparate[markedPre,"LAB"][[2;;3]]),gray],{3,1,2}],ColorSpace->"LAB"];
 \[CapitalOmega]=Table[getMask[0.0001],{3}];rgb\[CapitalOmega]=3rgbVector (\[CapitalOmega] (ImageData/@ColorSeparate[markedRgb,"RGB"]));
@@ -1117,13 +1120,6 @@ U=RandomReal[1,{m,n}];U//Dimensions
 S=dualSetSparsification[U,V1,r]
 {SingularValueList[V1.DiagonalMatrix@Sqrt@S][[k]],N[1-Sqrt[k/r]],Norm[U.DiagonalMatrix@Sqrt@S,"Frobenius"],Norm[U,"Frobenius"]}*)
 (*http://tocmirror.cs.tau.ac.il/articles/v002a012/v002a012.pdf*)
-columnBasedDecompositionAdaptiveSampling=Function[{Data,rank,numColumns,maxIter},Module[{M=Data,V,weights,Cm,Y},
-	V=SingularValueDecomposition[M,rank][[3]];
-	weights=Sqrt[Total[#^2]]&/@V;
-	(*Print@weights;*)
-	SortBy[Table[RandomSample[weights->Range[Dimensions[M][[2]]],numColumns],{maxIter}],
-		Norm[M-M[[;;,#]].PseudoInverse[M[[;;,#]]].M,"Frobenius"]&][[1]]
-	]];
 columnBasedDecompositionDualSet=Function[{Data,rank,numColumns,maxIter},Module[{M=Data,V,weights,Cm,Y,S,C1,C2,E,cols},
 	If[4rank>=numColumns,Throw["4rank must < numColumns"]];
 	V=SingularValueDecomposition[M,rank][[3]];
@@ -1147,11 +1143,6 @@ columnBasedDecompositionBlock=Function[{Data,rank,numColumns,numBlocks,maxIter},
 	B=M[[;;,columns]];
 	columnBasedDecompositionAdaptiveSampling[B,rank,numColumns,maxIter]
 	]];
-
-
-cxApprox=Function[{m,k},Module[{cols,Cm},cols=columnBasedDecompositionAdaptiveSampling[m,k,k,20];Cm=m[[;;,cols]];{Cm,PseudoInverse[Cm].m}]];
-cxColsRows=Function[{m,k},Module[{cols,Cm,rows},cols=columnBasedDecompositionAdaptiveSampling[m,k,k,20];Cm=m[[;;,cols]];
-	rows=columnBasedDecompositionAdaptiveSampling[Transpose[m],k,k,20];{cols,rows}]];
 
 
 m=Mean[ImageData/@ColorSeparate[ImageResize[Import@"~/t.jpg",500{1,1}]]];
@@ -1508,24 +1499,16 @@ Outer[Dot,Flatten/@X2,Flatten/@X2,1]//MatrixForm
 
 
 m=RandomReal[1,{3,3}];m2=m+Transpose[m];r=SingularValueDecomposition@m2;
-{MatrixForm/@{m2,r[[2]]},entropy/@{m2,r[[2]]},Total@Abs@Flatten[#]&/@{m2,r[[2]]},pnorm[#,0.3]&/@{m2,r[[2]]}}
-
-
-\!\(\(||\)\(X\)
-\*SubscriptBox[\(||\), \(1\)]\(+\[Mu]\)\(||\)\(1 - D\ U . X . 
+\!\(\({MatrixForm /@ {m2, r[\([2]\)]}, entropy /@ {m2, r[\([2]\)]}, \(Total@\(Abs@Flatten[#]\) &\) /@ {m2, r[\([2]\)]}, \(pnorm[#, 0.3] &\) /@ {m2, r[\([2]\)]}}\)\n\n\n || X
+\*SubscriptBox[\(||\), \(1\)]\(+\[Mu]\) || \(1 - D\ U . X . 
 \*SuperscriptBox[\(V\), \(T\)]\)
 \*SubscriptBox[\(||\), \(1\)]\(\(-\[Mu]\)\ D\ U . X . 
-\*SuperscriptBox[\(V\), \(T\)]\)\)
-sign(X)+\[Mu] (D V^T.U)^T sign(1-D U.X.V^T)-\[Mu] D V^T.U
-
-
-(*\!\(min\  || \(
+\*SuperscriptBox[\(V\), \(T\)]\nsign \((X)\) + \[Mu]\ \((D\ V^T . U)\)^T\ sign \((1 - D\ U . X . V^T)\) - \[Mu]\ D\ V^T . U\n\n\n (*min\  || 
 \*SuperscriptBox[\(E\), \(M - 
 \*SuperscriptBox[\(M\), \(T\)]\)] . D . 
 \*SuperscriptBox[\(E\), \(N - 
-\*SuperscriptBox[\(N\), \(T\)]\)]\)
-\*SubscriptBox[\(||\), \(1\)]\)*)
-v2={3,-5};s={1,1/3};v=s{Cos[Pi/4],Sin[Pi/4]};
+\*SuperscriptBox[\(N\), \(T\)]\)]
+\*SubscriptBox[\(||\), \(1\)]*) \nv2\)\)={3,-5};s={1,1/3};v=s{Cos[Pi/4],Sin[Pi/4]};
 U=N@(#[[1]].Transpose[#[[3]]])&@SingularValueDecomposition@Outer[Times,DiagonalMatrix[s^(-1/2)].v,v2,1];
 Graphics[{Blue,Line@Table[s{Cos@t,Sin@t},{t,0,2Pi+0.1,0.1}],Disk[v,0.1],Red,Disk[v.U,0.1],Darker@Yellow,Disk[v2,0.1]},Axes->True,AxesOrigin->{0,0}]
 

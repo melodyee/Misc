@@ -1,20 +1,60 @@
 (* ::Package:: *)
 
 printTemporary=(#;)&;
+resampleList = Function[{xys, xs}, Module[{f, oxs},
+        Assert[Max[xs] == 1];
+        Assert[Min[xs] == 0];
+        f = Interpolation[xys, InterpolationOrder -> 1];
+        oxs = xys[[;; , 1]];
+        f /@ (xs Max[oxs])
+    ]];
+qdrDecomposition=Function[m,Module[{qr=QRDecomposition[m]},{ConjugateTranspose@qr[[1]], DiagonalMatrix[Diagonal[qr[[2]]]], LinearSolve[DiagonalMatrix[Diagonal[qr[[2]]]],qr[[2]]]}]];
+matrixContourPlot3D=Function[m,Module[{xyzs=Join@@MapIndexed[Append[{#2[[2]],-#2[[1]]},#]&,m,{2}]},{ListContourPlot[xyzs],ListPlot3D@xyzs}]];
+jacobian=Function[{ys,xs},Table[D[y,#]&/@xs,{y,ys}]];
+structuredEdge=Function[img,Module[{tfname=CreateTemporary[]<>".jpg",ofname=CreateTemporary[]<>".jpg",img2},Export[tfname,img];
+	Run["LD_LIBRARY_PATH=/home/zsc/bin/opencv/lib /home/zsc/bin/ocr_main.bin --task detect_edge --input "<>tfname<>" --input2 /home/zsc/d/chars74k/edge_model.yml --output "<>ofname];
+	img2=Import@ofname;DeleteFile[{tfname,ofname}];img2]];
+integerStringFixedLength=Function[{i,n},StringJoin[Append[Table["0",{Max[0,n-StringLength@#]}],#]]&@IntegerString[i]];
+vandeMonde=Function[{v,n},Transpose@Table[v^j,{j,0,n-1}]];
+klDivergence=Compile[{{p,_Real,1},{q,_Real,1}},Tr@Table[If[p[[i]]==0,0,p[[i]](Log[p[[i]]]-Log[q[[i]]])],{i,Length@q}]];
+dropWhile=Function[{lst,crit},Module[{i=1},Do[If[Not@crit[lst[[i]]],Break[],i+=1],{Length@lst}];lst[[i;;]]]];
+importGb2312=Function[fname,Module[{tmp=CreateTemporary[]},Run["/usr/bin/iconv -f gb2312 -t utf8 "<>fname<>" -o "<>tmp];Import[tmp,"Lines",CharacterEncoding->"UTF-8"]]];
+shoelaceFormula=Function[pts,0.5 Abs[pts[[;;,1]].RotateLeft[pts[[;;,2]],1]-pts[[;;,2]].RotateLeft[pts[[;;,1]],1]]];
+eigenDecomposition=Function[m,{Transpose[#[[2]]],DiagonalMatrix[#[[1]]],Transpose@Inverse@#[[2]]}&@Eigensystem@m];
+matrixPowerF=Function[m,With[{es=Eigensystem@m},Function[a,Transpose@LinearSolve[es[[2]],DiagonalMatrix[Power[es[[1]],a]].es[[2]]]]]];
+imageCropToMultipleDivisorSize=Function[{img,divisor},ImageTake[img,Sequence@@Reverse@Transpose[{{1,1},divisor Floor[ImageDimensions[img]/divisor]}]]];
+standardizeMatrixAdaptive=Function[{m,radius},Module[{ker,r=2radius+1,mu,std},ker=N@ConstantArray[1,r{1,1}]/r/r;
+	mu=ListConvolve[ker,m,{1,-1},0][[radius+1;;-radius-1,radius+1;;-radius-1]];std=0.0001+Sqrt[ListConvolve[ker,(m-mu)^2,{1,-1},0][[radius+1;;-radius-1,radius+1;;-radius-1]]];
+	(m-mu)/std]];
+columnBasedDecompositionAdaptiveSampling=Function[{Data,rank,numColumns,maxIter},Module[{M=Data,V,weights,Cm,Y},
+	V=SingularValueDecomposition[M,Min[Min@@Dimensions@Data,rank]][[3]];
+	weights=Sqrt[Total[#^2]]&/@V;
+	(*Print@weights;*)
+	SortBy[Table[RandomSample[weights->Range[Dimensions[M][[2]]],numColumns],{maxIter}],Norm[M-M[[;;,#]].LeastSquares[M[[;;,#]],M],"Frobenius"]&][[1]]
+	]];
+cxApprox=Function[{m,k},Module[{cols,Cm},cols=columnBasedDecompositionAdaptiveSampling[m,k,k,4];Cm=m[[;;,cols]];{Cm,LeastSquares[Cm,m]}]];
+cxColsRows=Function[{m,k},Module[{cols,Cm,rows},cols=columnBasedDecompositionAdaptiveSampling[m,k,k,4];Cm=m[[;;,cols]];
+	rows=columnBasedDecompositionAdaptiveSampling[Transpose[m],k,k,4];{cols,rows}]];
+imagePadToImageDim=Function[{img,imgDim,padding},Module[{cur=ImageDimensions@img,left,bottom},
+	left=Round[(imgDim[[1]]-cur[[1]])/2];bottom=Round[(imgDim[[2]]-cur[[2]])/2];
+	ImagePad[img,{{left,imgDim[[1]]-cur[[1]]-left},{bottom,imgDim[[2]]-cur[[2]]-bottom}},Padding->padding]]];
+fullWidthToHalfWidth=Function[ch,If[ListQ@#&&Length[#]>0&&NumberQ@#[[1]]&&65281<=#[[1]]<=65374,FromCharacterCode[#[[1]]-65248],ch]&@ToCharacterCode@ch];
 fourDirectionNormalize=Function[oms,Module[{weights},
 	(*weights=N@Table[i^2 j,{i,Dimensions[oms][[1]]},{j,Dimensions[oms][[2]]}];*)
 	oms.First[SortBy[Table[RotationMatrix[90i Degree],{i,0,3}],pnorm[Map[Max[#,0]&,Standardize[oms].#,{2}],2]&]]]];
 Clear[lieNormalize];
 lieNormalize[oms_List,OptionsPattern[{"power"->3,"Polarity"->"Min","Method"->"Global"(*,"Weighted"->True*),"Group"->"SpecialLinear"}]]:=
-		Module[{a,as,ms=Standardize[oms],r,global=OptionValue["Method"]==="Global",p(*,weights*),transformed},
+		Module[{a,as,ms=Standardize[oms,Mean,1&],r,global=OptionValue["Method"]==="Global",p(*,weights*),transformed},
 	as=Array[a,Dimensions[ms][[2]]{1,1}];
 	p=OptionValue["power"];(*weights=N@Table[If[OptionValue["Weighted"],i^2 j,1],{i,Dimensions[oms][[1]]},{j,Dimensions[oms][[2]]}];*)
-	transformed=Switch[Dimensions[ms][[2]],2,((*weights*)ms).Switch[OptionValue@"Group","SpecialLinear",
-		{{a[2,1],0},{0,1/a[2,1]}}.{{1,a[1,2]},{0,1}}.With[{\[Theta]=a[1,1]},{{Cos[\[Theta]],-Sin[\[Theta]]},{Sin[\[Theta]],Cos[\[Theta]]}}],
+	transformed=Switch[Dimensions[ms][[2]]
+	,2,((*weights*)ms).Switch[OptionValue@"Group",
+		"SpecialLinear",{{a[2,1],0},{0,1/a[2,1]}}.{{1,a[1,2]},{0,1}}.With[{\[Theta]=a[1,1]},{{Cos[\[Theta]],-Sin[\[Theta]]},{Sin[\[Theta]],Cos[\[Theta]]}}],
 		"Rotation",With[{\[Theta]=a[1,1]},{{Cos[\[Theta]],-Sin[\[Theta]]},{Sin[\[Theta]],Cos[\[Theta]]}}],
+		"ShearingSqueezing",With[{d=Exp@a[1,1],s=a[1,2]},{{d,0},{s,1/d}}],
 		(*"Moebius",pnorm2[((*weights*)ms),p],*)
-		_,Abort[]]
-	,_,ms.MatrixExp[nilTrace@as]];
+		_,Print["(1) Group NYI."];Abort[]]
+	,_,If[OptionValue["Group"]!="SpecialLinear",Print["(2) Group NYI."];Abort[]];ms.MatrixExp[nilTrace@as]];
 	r=Switch[OptionValue["Polarity"],"Max",If[global,NMaximize,FindMaximum],"Min",If[global,NMinimize,FindMinimum],_,Abort[]][
 		pnorm2[transformed,p],Flatten@as];
 	{r[[1]],transformed/.r[[2]]}
@@ -461,9 +501,9 @@ pixelCoordToImageCoord=Function[{pixelCoord,imgDim},(pixelCoord-{1,1})imgDim/(im
 skewOmega=-Normal@HodgeDual@#&;
 inverseSkewOmega=Function[m,1/2{m[[3,2]]-m[[2,3]],m[[1,3]]-m[[3,1]],m[[2,1]]-m[[1,2]]}];
 (*fourier2D=Function[m,Transpose[Fourier/@Transpose[Fourier/@m]]];*)
-inverseFourier2D=Function[m,Transpose[InverseFourier/@Transpose[InverseFourier/@m]]];
-phaseCorrelation=Function[imgPairs,Module[{g1,g2},
-	{g1,g2}=Fourier@ImageData@#&/@imgPairs;inverseFourier2D@Map[Normalize,g1 Conjugate[g2],{2}]
+(*inverseFourier2D=Function[m,Transpose[InverseFourier/@Transpose[InverseFourier/@m]]];*)
+phaseCorrelation=Function[{img1,img2},Module[{g1,g2},
+	{g1,g2}=Fourier@ImageData@#&/@{img1,img2};InverseFourier@Map[Normalize,g1 Conjugate[g2],{2}]
 	]];
 rotateFourier=Function[m,RotateRight[m,Round[Dimensions[m]/2]]];
 lieBracket=#.#2-#2.#&;

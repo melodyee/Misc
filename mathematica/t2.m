@@ -5,6 +5,19 @@
 parseTimeStamp=Function[fname,ToExpression@StringSplit[StringReplace[fname,".JPG"->""],"_"][[-1]]];
 
 
+Min@Table[m = RandomVariate[NormalDistribution[],{3,3}];
+ldu = lduDecomposition[m];d2 = SingularValueList[m];
+Total@Flatten@Abs[DiagonalMatrix@Power[Diagonal[Transpose[ldu[[1]]].ldu[[1]]],0.5].ldu[[2]].DiagonalMatrix@Power[Diagonal[ldu[[3]].Transpose[ldu[[3]]]],0.5]] - Total@d2
+,{10000}]
+(*Total@Flatten@Abs[ldu[[2]]]*)
+(**)
+
+
+
+
+
+
+
 SeedRandom[1003];len=300;n=2;Clear[a,g,f1,f2];as=Array[a,{2,n,n}];
 g[as_,m_]:=With[{bs=MatrixExp[nilTrace[as[[1]]+I as[[2]]]]},Transpose[With[{z=#[[1]]+#[[2]]I},
 	{Re@#,Im@#}&[(bs[[1,1]]z+bs[[1,2]])/(bs[[2,1]]z+bs[[2,2]])]]&/@Transpose[m]]];
@@ -193,17 +206,17 @@ sparseLieDecomposition=Function[{D,mynorm,type},Module[{cplx=containsComplexesQ@
 	getXus=Function[{as,m},Module[{us=g[as]},(*sortXUs*)List[foldXUs[m,us,{}],Inverse/@us]]];
 	Clear[f];If[cplx,f[as_?(NumericQ[#[[1,1,1,1]]]&)]:=mynorm[foldXUs[D,g[as],{}]],
 		f[as_?(NumericQ[#[[1,1,1]]]&)]:=mynorm[foldXUs[D,g[as],{}]]];
-	r=NMinimize[f[as],DeleteDuplicates@Flatten[as](*,MaxIterations->500*)];
+	r=NMinimize(*FindMinimum*)[f[as],DeleteDuplicates@Flatten[as](*,MaxIterations->500*)];(*Print[r[[1]]];*)
 	getXus[as/.r[[2]],D]
 	]];
 SeedRandom[1003];m=RandomReal[3{-1,1},3{1,1}];(*m=N@{{1,1},{0,1}};*)
 {
-(*{xus=sparseLieDecomposition[m,pnorm[#,1]&,"SVD"];,MatrixForm/@xus[[1]],MatrixForm/@xus[[2]],SingularValueList@m}//AbsoluteTiming,*)
+{xus=sparseLieDecomposition[m,pnorm[#,1]&,"SVD"];,MatrixForm/@xus[[1]],MatrixForm/@xus[[2]],SingularValueList@m}//AbsoluteTiming,
 (*{xus=sparseLieDecomposition[m,pnorm[#,1]&,"SL"];,MatrixForm/@xus[[1]],MatrixForm/@xus[[2]],Det[m]^(1/Dimensions[m][[1]])}//AbsoluteTiming,*)
-{xus=sparseLieDecomposition[m,pnorm[#,1]&,"EVD"];,MatrixForm/@xus[[1]],MatrixForm/@xus[[2]],Eigenvalues@m}//AbsoluteTiming,
+(*{xus=sparseLieDecomposition[m,pnorm[#,1]&,"EVD"];,MatrixForm/@xus[[1]],MatrixForm/@xus[[2]],Eigenvalues@m}//AbsoluteTiming,*)
 (*UT-EVD does not generate sparse result
 {xus=sparseLieDecomposition[m,pnorm[#,1]&,"UT-EVD"];,MatrixForm/@xus[[1]],MatrixForm/@xus[[2]],Eigenvalues@m}//AbsoluteTiming,*)
-{xus=sparseLieDecomposition[m,pnorm[#,1]&,"LDU"];,MatrixForm/@xus[[1]],MatrixForm/@xus[[2]],MatrixForm/@luDecomposition@m}//AbsoluteTiming,
+(*{xus=sparseLieDecomposition[m,pnorm[#,1]&,"LDU"];,MatrixForm/@xus[[1]],MatrixForm/@xus[[2]],MatrixForm/@luDecomposition@m}//AbsoluteTiming,*)
 (*{xus=sparseLieDecomposition[m,pnorm[#,1]&,"QR"];,MatrixForm/@xus[[1]],MatrixForm/@xus[[2]],MatrixForm/@QRDecomposition@m}//AbsoluteTiming,*)
 (*{xus=sparseLieDecomposition[m,pnorm[#,1]&,"Schur"];,MatrixForm/@xus[[1]],MatrixForm/@xus[[2]],MatrixForm/@schurDecomposition@m}//AbsoluteTiming,*)
 (*With[{m=m.m\[Transpose]},{xus=sparseLieDecomposition[m,pnorm[#,1]&,"Cholesky"];
@@ -679,7 +692,8 @@ ParametricPlot3D[{r Cos@t,r Sin@t,z},{t,0,2Pi},{z,-1,1},PlotStyle->{Opacity[1],T
 
 
 With[{r=1},
-ParametricPlot3D[{r Cos[v] Cos@u,r Cos[v] Sin@u, r Sin@v},{u,0,Pi},{v,0,Pi},PlotStyle->{Opacity[0.8],Texture@ImageRotate[Import@"Downloads/sphere_rama.jpg",-90Degree]},Mesh->None,(*PlotRange->All,*)Lighting->"Neutral"
+ParametricPlot3D[{r Cos[v] Cos@u,r Cos[v] Sin@u, r Sin@v},{u,0,Pi},{v,0,Pi},PlotStyle->{Opacity[0.8],Texture@ImageRotate[Import@"Downloads/sphere_rama.jpg",-90Degree]}
+	,Mesh->None,(*PlotRange->All,*)Lighting->"Neutral"
 	,(*ViewPoint->{0,0,2},*)ImageSize->1000(*,ViewPoint->{0,0,0}*),(*TextureCoordinateFunction->({#[[1]],#[[3]]}&),*)Boxed -> False]];
 
 

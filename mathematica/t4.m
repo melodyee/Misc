@@ -211,6 +211,20 @@ rtnFromHomographyMatches4=Function[{matches,ikm},Module[{a,n,f,as,ts,ns,r,nmatch
 	r=NMinimize[f[as,ns],Flatten@{as,ns}];{matrixExpSpecialOrthogonal@as,Norm[ns]ts,Normalize[ns]}/.r[[2]]]];*)
 
 
+
+
+
+m=ImageData[Import["~/t.jpg"]][[;;,;;,3]];
+ldu=lduDecomposition@m;
+Import@Export["/tmp/t.jpg",ListLogLogPlot[{Reverse@Sort[Abs@Diagonal@ldu[[2]]],SingularValueList@m},PlotLegends->{"LU Diagonal abs", "SV's"},ImageSize->600,PlotRange->All],ImageSize->1200]
+
+
+
+
+
+
+
+
 hsFromHomog=Function[{homog,qPair,coord,ikm},Module[{lm,rm},
 	{lm,rm}={Inverse[coord.ikm].Transpose[quaternionToRotationMatrix[qPair[[2]]]],quaternionToRotationMatrix[qPair[[1]]].coord.ikm};
 	Inverse[lm].homog.Inverse[rm]-IdentityMatrix[3]]];
