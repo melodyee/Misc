@@ -93,10 +93,12 @@ writeReg r v = do
         cpu <- get
         put cpu {regs = mywrite r v (regs cpu)}  
          
+readMem :: Word16 -> State Cpu Word16
 readMem a = do
         cpu <- get
         return (if a>=4096 then error ("mem "++show a) else myread a (mem cpu))
 
+writeMem :: Word16 -> Word16 -> State Cpu ()
 writeMem r v = do
         cpu <- get
         put cpu {mem = mywrite r v (mem cpu)}
